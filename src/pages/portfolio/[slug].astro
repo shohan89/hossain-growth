@@ -1,0 +1,143 @@
+---
+import { env } from 'cloudflare:workers';
+import { eq } from 'drizzle-orm';
+import SiteLayout from '../../layouts/SiteLayout.astro';
+import Container from '../../components/ui/Container.astro';
+import Breadcrumbs from '../../components/ui/Breadcrumbs.astro';
+import FinalCta from '../../components/home/FinalCta.astro';
+import { getDb } from '../../lib/db/client';
+import { getPortfolioProjectBySlug } from '../../lib/content/public';
+import { services as servicesTable, caseStudies, testimonials } from '../../lib/db/schema';
+
+export const prerender = false;
+
+const { slug } = Astro.params;
+const db = getDb(env.DB);
+const project = slug ? await getPortfolioProjectBySlug(db, slug) : null;
+
+if (!project) {
+  return new Response('Project not found', { status: 404 });
+}
+
+const [relatedServices, relatedCaseStudy, relatedTestimonial] = await Promise.all([
+  project.serviceIds.length
+    ? Promise.all(
+        project.serviceIds.map((id) =>
+          db
+            .select({ title: servicesTable.title, slug: servicesTable.slug })
+            .from(servicesTable)
+            .where(eq(servicesTable.id, id))
+            .then((rows) => rows[0]),
+        ),
+      )
+    : Promise.resolve([]),
+  db
+    .select({ slug: caseStudies.slug, title: caseStudies.title })
+    .from(caseStudies)
+    .where(eq(caseStudies.portfolioProjectId, project.id))
+    .then((rows) => rows[0] ?? null),
+  db
+    .select()
+    .from(testimonials)
+    .where(eq(testimonials.portfolioProjectId, project.id))
+    .then((rows) => rows[0] ?? null),
+]);
+
+const metricsEntries = Object.entries(project.resultsMetrics ?? {});
+const canonicalUrl = new URL(`/portfolio/${project.slug}`, Astro.url.origin).toString();
+---
+
+<SiteLayout
+  title={project.title}
+  description={project.summary ?? undefined}
+  canonicalUrl={canonicalUrl}
+>
+  <section class="bg-ink-950 py-20 text-bone-50 lg:py-28">
+    <Container class="flex flex-col gap-6">
+      <Breadcrumbs
+        items={[
+          { label: 'Home', href: '/' },
+          { label: 'Portfolio', href: '/portfolio' },
+          { label: project.title },
+        ]}
+        class="text-ink-400"
+      />
+      {project.clientName && (
+        <span class="text-sm font-semibold uppercase tracking-wide text-lime-400">
+          {project.clientName}
+        </span>
+      )}
+      <h1 class="max-w-3xl font-display text-4xl font-bold sm:text-5xl lg:text-6xl">
+        {project.title}
+      </h1>
+      <p class="max-w-2xl text-lg text-ink-200">{project.summary}</p>
+
+      {relatedServices.length > 0 && (
+        <div class="flex flex-wrap gap-2">
+          {relatedServices.filter(Boolean).map((service) => (
+            <a
+              href={`/services/${service!.slug}`}
+              class="rounded-full border border-bone-50/15 px-4 py-1.5 text-xs font-semibold text-bone-50 hover:border-lime-400"
+            >
+              {service!.title}
+            </a>
+          ))}
+        </div>
+      )}
+    </Container>
+  </section>
+
+  {metricsEntries.length > 0 && (
+    <section class="border-b border-ink-900/8 bg-bone-100">
+      <Container class="grid grid-cols-2 gap-6 py-10 sm:grid-cols-4">
+        {metricsEntries.map(([label, value]) => (
+          <div>
+            <p class="font-display text-2xl font-bold text-ink-900">{value}</p>
+            <p class="text-sm text-ink-600">{label}</p>
+          </div>
+        ))}
+      </Container>
+    </section>
+  )}
+
+  {project.content && (
+    <section class="py-20 lg:py-28">
+      <Container class="prose-content text-ink-800">
+        <div set:html={project.content} />
+      </Container>
+    </section>
+  )}
+
+  {relatedTestimonial && (
+    <section class="bg-bone-100 py-16">
+      <Container class="max-w-2xl">
+        <blockquote class="text-xl font-medium text-ink-900">
+          &ldquo;{relatedTestimonial.content}&rdquo;
+        </blockquote>
+        <p class="mt-4 text-sm text-ink-600">
+          {relatedTestimonial.clientName}
+          {relatedTestimonial.clientCompany ? `, ${relatedTestimonial.clientCompany}` : ''}
+        </p>
+      </Container>
+    </section>
+  )}
+
+  {relatedCaseStudy && (
+    <section class="py-16">
+      <Container class="flex flex-col items-start gap-4 rounded-3xl border border-ink-900/8 bg-bone-100 p-10 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <p class="text-sm font-semibold uppercase tracking-wide text-lime-600">Full case study</p>
+          <p class="font-display text-xl font-semibold text-ink-900">{relatedCaseStudy.title}</p>
+        </div>
+        <a
+          href={`/case-studies/${relatedCaseStudy.slug}`}
+          class="font-semibold text-ink-900 hover:text-lime-600"
+        >
+          Read the case study →
+        </a>
+      </Container>
+    </section>
+  )}
+
+  <FinalCta />
+</SiteLayout>

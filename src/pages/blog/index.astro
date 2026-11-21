@@ -1,0 +1,56 @@
+---
+import { env } from 'cloudflare:workers';
+import SiteLayout from '../../layouts/SiteLayout.astro';
+import Container from '../../components/ui/Container.astro';
+import Breadcrumbs from '../../components/ui/Breadcrumbs.astro';
+import { getDb } from '../../lib/db/client';
+import { getPublishedBlogPosts } from '../../lib/content/public';
+
+export const prerender = false;
+
+const categorySlug = Astro.url.searchParams.get('category') ?? undefined;
+const db = getDb(env.DB);
+const posts = await getPublishedBlogPosts(db, { categorySlug });
+---
+
+<SiteLayout
+  title="Blog"
+  description="Insights on digital marketing, SEO, paid media, and growth strategy from the Hossain Growth team."
+>
+  <section class="bg-ink-950 py-20 text-bone-50 lg:py-28">
+    <Container class="flex flex-col gap-6">
+      <Breadcrumbs items={[{ label: 'Home', href: '/' }, { label: 'Blog' }]} class="text-ink-400" />
+      <h1 class="max-w-3xl font-display text-4xl font-bold sm:text-5xl lg:text-6xl">Insights.</h1>
+      <p class="max-w-2xl text-lg text-ink-200">
+        Practical thinking on marketing, SEO, and growth — from the team running these strategies
+        every day.
+      </p>
+    </Container>
+  </section>
+
+  <section class="py-20 lg:py-28">
+    <Container>
+      {posts.length === 0 ? (
+        <p class="text-ink-600">New articles are on the way — check back soon.</p>
+      ) : (
+        <div class="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+          {posts.map((post) => (
+            <a
+              href={`/blog/${post.slug}`}
+              class="flex flex-col gap-3 rounded-3xl border border-ink-900/8 bg-bone-100 p-8 transition-colors hover:border-lime-500/60"
+            >
+              {post.categoryName && (
+                <span class="text-xs font-semibold uppercase tracking-wide text-lime-600">
+                  {post.categoryName}
+                </span>
+              )}
+              <h2 class="font-display text-lg font-semibold text-ink-900">{post.title}</h2>
+              <p class="text-sm text-ink-600">{post.excerpt}</p>
+              <span class="mt-auto text-sm font-semibold text-ink-900">Read article →</span>
+            </a>
+          ))}
+        </div>
+      )}
+    </Container>
+  </section>
+</SiteLayout>

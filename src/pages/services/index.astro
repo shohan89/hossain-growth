@@ -1,0 +1,59 @@
+---
+import { env } from 'cloudflare:workers';
+import SiteLayout from '../../layouts/SiteLayout.astro';
+import Container from '../../components/ui/Container.astro';
+import Breadcrumbs from '../../components/ui/Breadcrumbs.astro';
+import Icon from '../../components/ui/Icon.astro';
+import FinalCta from '../../components/home/FinalCta.astro';
+import { getDb } from '../../lib/db/client';
+import { getPublishedServices } from '../../lib/content/public';
+import { SERVICE_ICON } from '../../content/services-detail';
+
+const db = getDb(env.DB);
+const services = await getPublishedServices(db);
+---
+
+<SiteLayout
+  title="Services"
+  description="Full stack digital marketing, Google Ads, Meta Ads, SEO/AEO/GEO, social media management, and web development — built as one connected growth strategy."
+>
+  <section class="bg-ink-950 py-20 text-bone-50 lg:py-28">
+    <Container class="flex flex-col gap-6">
+      <Breadcrumbs
+        items={[{ label: 'Home', href: '/' }, { label: 'Services' }]}
+        class="text-ink-400"
+      />
+      <h1 class="max-w-3xl font-display text-4xl font-bold sm:text-5xl lg:text-6xl">
+        Services that work as one growth system.
+      </h1>
+      <p class="max-w-2xl text-lg text-ink-200">
+        Choose a single discipline or combine them under one strategy — every service is built to
+        reinforce the others.
+      </p>
+    </Container>
+  </section>
+
+  <section class="py-20 lg:py-28">
+    <Container class="grid gap-5 sm:grid-cols-2">
+      {services.map((service) => (
+        <a
+          href={`/services/${service.slug}`}
+          class="group flex flex-col gap-5 rounded-3xl border border-ink-900/8 bg-bone-100 p-8 transition-colors hover:border-lime-500/60 hover:bg-bone-50"
+        >
+          <span class="flex h-12 w-12 items-center justify-center rounded-2xl bg-ink-900 text-lime-400">
+            <Icon name={SERVICE_ICON[service.slug] ?? 'layers'} />
+          </span>
+          <div class="flex flex-col gap-2">
+            <h2 class="font-display text-xl font-semibold text-ink-900">{service.title}</h2>
+            <p class="text-sm text-ink-600">{service.summary}</p>
+          </div>
+          <span class="mt-auto text-sm font-semibold text-ink-900 group-hover:text-lime-600">
+            Learn more →
+          </span>
+        </a>
+      ))}
+    </Container>
+  </section>
+
+  <FinalCta />
+</SiteLayout>

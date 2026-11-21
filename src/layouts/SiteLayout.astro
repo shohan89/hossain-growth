@@ -1,0 +1,56 @@
+---
+import { env } from 'cloudflare:workers';
+import PublicLayout from './PublicLayout.astro';
+import Navbar from '../components/layout/Navbar.astro';
+import Footer from '../components/layout/Footer.astro';
+import { getDb } from '../lib/db/client';
+import { getNavigationItems, getSiteSetting } from '../lib/content/public';
+
+interface Props {
+  title: string;
+  description?: string;
+  canonicalUrl?: string;
+  ogImageUrl?: string;
+  noindex?: boolean;
+  structuredData?: Record<string, unknown> | Record<string, unknown>[];
+}
+
+const DEFAULT_NAV = [
+  { label: 'Services', href: '/services' },
+  { label: 'Portfolio', href: '/portfolio' },
+  { label: 'Case Studies', href: '/case-studies' },
+  { label: 'Industries', href: '/industries' },
+  { label: 'Blog', href: '/blog' },
+  { label: 'About', href: '/about' },
+];
+
+const db = getDb(env.DB);
+const [navRows, contactEmail, contactPhone] = await Promise.all([
+  getNavigationItems(db, 'header'),
+  getSiteSetting<string>(db, 'contact_email'),
+  getSiteSetting<string>(db, 'contact_phone'),
+]);
+
+const navItems = navRows.length
+  ? navRows
+      .filter((item) => item.url)
+      .map((item) => ({ label: item.label, href: item.url as string }))
+  : DEFAULT_NAV;
+
+const { title, description, canonicalUrl, ogImageUrl, noindex, structuredData } = Astro.props;
+---
+
+<PublicLayout
+  title={title}
+  description={description}
+  canonicalUrl={canonicalUrl}
+  ogImageUrl={ogImageUrl}
+  noindex={noindex}
+  structuredData={structuredData}
+>
+  <Navbar items={navItems} />
+  <main id="main-content">
+    <slot />
+  </main>
+  <Footer contactEmail={contactEmail ?? undefined} contactPhone={contactPhone ?? undefined} />
+</PublicLayout>

@@ -1,0 +1,91 @@
+---
+import SiteLayout from '../layouts/SiteLayout.astro';
+import Container from '../components/ui/Container.astro';
+import SectionHeading from '../components/ui/SectionHeading.astro';
+import Breadcrumbs from '../components/ui/Breadcrumbs.astro';
+import Icon from '../components/ui/Icon.astro';
+import FinalCta from '../components/home/FinalCta.astro';
+
+const values = [
+  {
+    icon: 'compass' as const,
+    title: 'Strategy first',
+    description:
+      'We start every engagement by understanding the business, not by selling a package.',
+  },
+  {
+    icon: 'layers' as const,
+    title: 'Connected execution',
+    description: 'Marketing and technology are planned and built together, by one team.',
+  },
+  {
+    icon: 'shield' as const,
+    title: 'Transparent by default',
+    description:
+      'You see what we see — the same data, dashboards, and reporting we use internally.',
+  },
+];
+---
+
+<SiteLayout
+  title="About Us"
+  description="Hossain Growth is a digital growth partner helping ambitious businesses build, grow, and scale through strategic marketing and technology."
+>
+  <section class="bg-ink-950 py-20 text-bone-50 lg:py-28">
+    <Container class="flex flex-col gap-6">
+      <Breadcrumbs
+        items={[{ label: 'Home', href: '/' }, { label: 'About Us' }]}
+        class="text-ink-400"
+      />
+      <h1 class="max-w-3xl font-display text-4xl font-bold sm:text-5xl lg:text-6xl">
+        Your business growth partner.
+      </h1>
+      <p class="max-w-2xl text-lg text-ink-200">
+        Hossain Growth exists because most businesses do not need another vendor selling another
+        service. They need a partner thinking about growth the way they do — as one connected
+        outcome, not a list of deliverables.
+      </p>
+    </Container>
+  </section>
+
+  <section class="py-20 lg:py-28">
+    <Container class="grid gap-10 lg:grid-cols-2">
+      <SectionHeading
+        eyebrow="Our positioning"
+        title="More than a marketing service provider"
+        description="We help businesses build, grow, and scale through strategic digital marketing and technology — treating your website, campaigns, and content as one system working toward the same business outcomes."
+      />
+      <div class="flex flex-col gap-4 text-ink-600">
+        <p>
+          Too many agencies optimize for a single metric inside a single channel — more clicks, more
+          followers, more traffic — without connecting it back to revenue. We work the other way
+          around.
+        </p>
+        <p>
+          Every engagement starts with your business goals and works backward into the right mix of
+          channels, content, and technology to reach them, managed by one accountable team instead
+          of a rotating set of vendors.
+        </p>
+      </div>
+    </Container>
+  </section>
+
+  <section class="bg-bone-100 py-20 lg:py-28">
+    <Container class="flex flex-col gap-12">
+      <SectionHeading eyebrow="How we work" title="The principles behind every engagement" />
+      <div class="grid gap-5 sm:grid-cols-3">
+        {values.map((value) => (
+          <div class="flex flex-col gap-4 rounded-3xl border border-ink-900/8 bg-bone-50 p-8">
+            <span class="flex h-11 w-11 items-center justify-center rounded-xl bg-ink-900 text-lime-400">
+              <Icon name={value.icon} class="h-5 w-5" />
+            </span>
+            <h3 class="font-display text-lg font-semibold text-ink-900">{value.title}</h3>
+            <p class="text-sm text-ink-600">{value.description}</p>
+          </div>
+        ))}
+      </div>
+    </Container>
+  </section>
+
+  <FinalCta />
+</SiteLayout>

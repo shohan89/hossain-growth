@@ -1,0 +1,110 @@
+---
+import { env } from 'cloudflare:workers';
+import SiteLayout from '../../layouts/SiteLayout.astro';
+import Container from '../../components/ui/Container.astro';
+import Breadcrumbs from '../../components/ui/Breadcrumbs.astro';
+import { getDb } from '../../lib/db/client';
+import { getBlogPostBySlug, getRelatedBlogPosts } from '../../lib/content/public';
+import { articleSchema } from '../../lib/seo';
+
+export const prerender = false;
+
+const { slug } = Astro.params;
+const db = getDb(env.DB);
+const post = slug ? await getBlogPostBySlug(db, slug) : null;
+
+if (!post) {
+  return new Response('Article not found', { status: 404 });
+}
+
+const related = await getRelatedBlogPosts(db, post.id, post.categoryId);
+const canonicalUrl = new URL(`/blog/${post.slug}`, Astro.url.origin).toString();
+---
+
+<SiteLayout
+  title={post.title}
+  description={post.excerpt ?? undefined}
+  canonicalUrl={canonicalUrl}
+  structuredData={articleSchema({
+    headline: post.title,
+    description: post.excerpt ?? undefined,
+    url: canonicalUrl,
+    datePublished: post.publishedAt?.toISOString(),
+    dateModified: post.updatedAt?.toISOString(),
+    authorName: post.authorName ?? undefined,
+  })}
+>
+  <article>
+    <header class="bg-ink-950 py-20 text-bone-50 lg:py-28">
+      <Container class="flex flex-col gap-6">
+        <Breadcrumbs
+          items={[
+            { label: 'Home', href: '/' },
+            { label: 'Blog', href: '/blog' },
+            { label: post.title },
+          ]}
+          class="text-ink-400"
+        />
+        {post.categoryName && (
+          <span class="text-sm font-semibold uppercase tracking-wide text-lime-400">
+            {post.categoryName}
+          </span>
+        )}
+        <h1 class="max-w-3xl font-display text-4xl font-bold sm:text-5xl lg:text-6xl">
+          {post.title}
+        </h1>
+        <p class="text-sm text-ink-400">
+          {post.authorName && <span>By {post.authorName}</span>}
+          {post.publishedAt && (
+            <span>
+              {' '}
+              &middot;{' '}
+              {post.publishedAt.toLocaleDateString('en-US', {
+                year: 'numeric',
+                month: 'long',
+                day: 'numeric',
+              })}
+            </span>
+          )}
+        </p>
+      </Container>
+    </header>
+
+    <section class="py-20 lg:py-28">
+      <Container class="prose-content text-ink-800">
+        <div set:html={post.content} />
+      </Container>
+    </section>
+
+    {post.tags.length > 0 && (
+      <section class="pb-12">
+        <Container class="flex flex-wrap gap-2">
+          {post.tags.map((tag) => (
+            <span class="rounded-full border border-ink-900/15 px-3 py-1 text-xs font-medium text-ink-600">
+              #{tag.name}
+            </span>
+          ))}
+        </Container>
+      </section>
+    )}
+  </article>
+
+  {related.length > 0 && (
+    <section class="bg-bone-100 py-20 lg:py-28">
+      <Container class="flex flex-col gap-10">
+        <h2 class="font-display text-2xl font-bold text-ink-900">More from the blog</h2>
+        <div class="grid gap-5 lg:grid-cols-3">
+          {related.map((item) => (
+            <a
+              href={`/blog/${item.slug}`}
+              class="flex flex-col gap-3 rounded-3xl border border-ink-900/8 bg-bone-50 p-8 hover:border-lime-500/60"
+            >
+              <h3 class="font-display text-lg font-semibold text-ink-900">{item.title}</h3>
+              <p class="text-sm text-ink-600">{item.excerpt}</p>
+            </a>
+          ))}
+        </div>
+      </Container>
+    </section>
+  )}
+</SiteLayout>

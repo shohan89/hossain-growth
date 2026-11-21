@@ -1,0 +1,41 @@
+---
+import SiteLayout from '../../layouts/SiteLayout.astro';
+import Container from '../../components/ui/Container.astro';
+import Breadcrumbs from '../../components/ui/Breadcrumbs.astro';
+import FinalCta from '../../components/home/FinalCta.astro';
+import { INDUSTRIES } from '../../content/industries';
+---
+
+<SiteLayout
+  title="Industries"
+  description="Hossain Growth works with businesses across e-commerce, SaaS, healthcare, real estate, professional services, hospitality, education, and manufacturing."
+>
+  <section class="bg-ink-950 py-20 text-bone-50 lg:py-28">
+    <Container class="flex flex-col gap-6">
+      <Breadcrumbs
+        items={[{ label: 'Home', href: '/' }, { label: 'Industries' }]}
+        class="text-ink-400"
+      />
+      <h1 class="max-w-3xl font-display text-4xl font-bold sm:text-5xl lg:text-6xl">
+        Industries we serve.
+      </h1>
+      <p class="max-w-2xl text-lg text-ink-200">
+        Every market has its own buyers, sales cycles, and growth levers. Here is how we adapt
+        strategy by industry.
+      </p>
+    </Container>
+  </section>
+
+  <section class="py-20 lg:py-28">
+    <Container class="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+      {INDUSTRIES.map((industry) => (
+        <div class="flex flex-col gap-3 rounded-3xl border border-ink-900/8 bg-bone-100 p-8">
+          <h2 class="font-display text-lg font-semibold text-ink-900">{industry.name}</h2>
+          <p class="text-sm text-ink-600">{industry.description}</p>
+        </div>
+      ))}
+    </Container>
+  </section>
+
+  <FinalCta />
+</SiteLayout>

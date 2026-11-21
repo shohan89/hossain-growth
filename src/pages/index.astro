@@ -1,15 +1,46 @@
 ---
-import PublicLayout from '../layouts/PublicLayout.astro';
-import HealthStatus from '../components/HealthStatus.tsx';
+import { env } from 'cloudflare:workers';
+import SiteLayout from '../layouts/SiteLayout.astro';
+import Hero from '../components/home/Hero.astro';
+import TrustIndicators from '../components/home/TrustIndicators.astro';
+import ServicesOverview from '../components/home/ServicesOverview.astro';
+import WhyChooseUs from '../components/home/WhyChooseUs.astro';
+import FeaturedPortfolio from '../components/home/FeaturedPortfolio.astro';
+import CaseStudyResults from '../components/home/CaseStudyResults.astro';
+import GrowthProcess from '../components/home/GrowthProcess.astro';
+import IndustriesStrip from '../components/home/IndustriesStrip.astro';
+import Testimonials from '../components/home/Testimonials.astro';
+import Insights from '../components/home/Insights.astro';
+import FinalCta from '../components/home/FinalCta.astro';
+import { getDb } from '../lib/db/client';
+import {
+  getPublishedServices,
+  getPublishedPortfolioProjects,
+  getPublishedCaseStudies,
+  getPublishedBlogPosts,
+  getPublishedTestimonials,
+} from '../lib/content/public';
+
+const db = getDb(env.DB);
+const [services, portfolioProjects, caseStudies, blogPosts, testimonials] = await Promise.all([
+  getPublishedServices(db),
+  getPublishedPortfolioProjects(db, 3),
+  getPublishedCaseStudies(db, 2),
+  getPublishedBlogPosts(db, { limit: 3 }),
+  getPublishedTestimonials(db, 3),
+]);
 ---
 
-<PublicLayout title="Home">
-  <main class="mx-auto flex max-w-3xl flex-col gap-6 px-6 py-16">
-    <h1 class="text-4xl font-bold tracking-tight">Hossain Growth</h1>
-    <p class="text-lg text-slate-600">
-      Full stack digital marketing, Google Ads, Meta Ads, SEO/AEO/GEO, social media, and web
-      development — built on Cloudflare's edge platform.
-    </p>
-    <HealthStatus client:load />
-  </main>
-</PublicLayout>
+<SiteLayout title="Hossain Growth">
+  <Hero />
+  <TrustIndicators />
+  <ServicesOverview services={services} />
+  <WhyChooseUs />
+  <FeaturedPortfolio projects={portfolioProjects} />
+  <CaseStudyResults caseStudies={caseStudies} />
+  <GrowthProcess />
+  <IndustriesStrip />
+  <Testimonials testimonials={testimonials} />
+  <Insights posts={blogPosts} />
+  <FinalCta />
+</SiteLayout>

@@ -1,0 +1,24 @@
+---
+import Container from '../ui/Container.astro';
+
+const indicators = [
+  { title: 'Platform-certified', description: 'Google and Meta ads accredited strategists' },
+  {
+    title: 'Edge-grade infrastructure',
+    description: 'Websites built on Cloudflare for speed and uptime',
+  },
+  { title: 'Transparent reporting', description: 'Clear monthly reporting on spend and results' },
+  { title: 'One accountable team', description: 'A single partner across strategy and execution' },
+];
+---
+
+<section class="border-y border-ink-900/8 bg-bone-100">
+  <Container class="grid grid-cols-1 gap-8 py-12 sm:grid-cols-2 lg:grid-cols-4">
+    {indicators.map((item) => (
+      <div class="flex flex-col gap-1">
+        <p class="font-display text-base font-semibold text-ink-900">{item.title}</p>
+        <p class="text-sm text-ink-600">{item.description}</p>
+      </div>
+    ))}
+  </Container>
+</section>

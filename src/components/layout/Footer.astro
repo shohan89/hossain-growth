@@ -1,0 +1,93 @@
+---
+import Container from '../ui/Container.astro';
+
+interface Props {
+  contactEmail?: string;
+  contactPhone?: string;
+}
+
+const { contactEmail = 'hello@hossaingrowth.com', contactPhone } = Astro.props;
+
+const serviceLinks = [
+  { label: 'Full Stack Digital Marketing', href: '/services/full-stack-digital-marketing' },
+  { label: 'Google Ads Management', href: '/services/google-ads-management' },
+  { label: 'Meta Ads Management', href: '/services/meta-ads-management' },
+  { label: 'SEO / AEO / GEO', href: '/services/seo-aeo-geo' },
+  { label: 'Social Media Management', href: '/services/social-media-management' },
+  { label: 'Web Development', href: '/services/web-development' },
+];
+
+const companyLinks = [
+  { label: 'About Us', href: '/about' },
+  { label: 'Portfolio', href: '/portfolio' },
+  { label: 'Case Studies', href: '/case-studies' },
+  { label: 'Industries', href: '/industries' },
+  { label: 'Blog', href: '/blog' },
+  { label: 'Contact', href: '/contact' },
+];
+
+const year = new Date().getFullYear();
+---
+
+<footer class="bg-ink-950 text-bone-100">
+  <Container class="grid gap-12 py-20 lg:grid-cols-[1.4fr_1fr_1fr_1fr]">
+    <div class="flex flex-col gap-4">
+      <p class="font-display text-xl font-bold text-bone-50">Hossain Growth</p>
+      <p class="max-w-sm text-sm text-ink-200">
+        Your business growth partner — strategic digital marketing and technology built to help
+        ambitious businesses build, grow, and scale.
+      </p>
+      <a href={`mailto:${contactEmail}`} class="text-sm font-medium text-lime-400 hover:underline">
+        {contactEmail}
+      </a>
+      {contactPhone && <p class="text-sm text-ink-200">{contactPhone}</p>}
+    </div>
+
+    <div>
+      <p class="text-sm font-semibold uppercase tracking-wide text-ink-400">Services</p>
+      <ul class="mt-4 flex flex-col gap-3">
+        {serviceLinks.map((link) => (
+          <li>
+            <a href={link.href} class="text-sm text-ink-200 hover:text-bone-50">
+              {link.label}
+            </a>
+          </li>
+        ))}
+      </ul>
+    </div>
+
+    <div>
+      <p class="text-sm font-semibold uppercase tracking-wide text-ink-400">Company</p>
+      <ul class="mt-4 flex flex-col gap-3">
+        {companyLinks.map((link) => (
+          <li>
+            <a href={link.href} class="text-sm text-ink-200 hover:text-bone-50">
+              {link.label}
+            </a>
+          </li>
+        ))}
+      </ul>
+    </div>
+
+    <div>
+      <p class="text-sm font-semibold uppercase tracking-wide text-ink-400">Legal</p>
+      <ul class="mt-4 flex flex-col gap-3">
+        <li>
+          <a href="/privacy-policy" class="text-sm text-ink-200 hover:text-bone-50">
+            Privacy Policy
+          </a>
+        </li>
+        <li>
+          <a href="/terms-and-conditions" class="text-sm text-ink-200 hover:text-bone-50">
+            Terms &amp; Conditions
+          </a>
+        </li>
+      </ul>
+    </div>
+  </Container>
+
+  <Container class="flex flex-col gap-3 border-t border-bone-50/10 py-6 text-xs text-ink-400 sm:flex-row sm:items-center sm:justify-between">
+    <p>&copy; {year} Hossain Growth. All rights reserved.</p>
+    <p>Built on Cloudflare's edge platform.</p>
+  </Container>
+</footer>

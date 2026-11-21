@@ -1,0 +1,112 @@
+---
+import Container from '../ui/Container.astro';
+import Button from '../ui/Button.astro';
+
+interface NavItem {
+  label: string;
+  href: string;
+}
+
+interface Props {
+  items: NavItem[];
+}
+
+const { items } = Astro.props;
+const currentPath = Astro.url.pathname;
+
+function isActive(href: string) {
+  if (href === '/') return currentPath === '/';
+  return currentPath === href || currentPath.startsWith(`${href}/`);
+}
+---
+
+<header class="sticky top-0 z-50 border-b border-ink-900/8 bg-bone-50/90 backdrop-blur-md">
+  <Container class="flex h-20 items-center justify-between">
+    <a href="/" class="font-display text-lg font-bold tracking-tight text-ink-900">
+      Hossain Growth
+    </a>
+
+    <nav aria-label="Primary" class="hidden items-center gap-8 lg:flex">
+      {items.map((item) => (
+        <a
+          href={item.href}
+          class={`text-sm font-medium transition-colors hover:text-ink-900 ${
+            isActive(item.href) ? 'text-ink-900' : 'text-ink-600'
+          }`}
+          aria-current={isActive(item.href) ? 'page' : undefined}
+        >
+          {item.label}
+        </a>
+      ))}
+    </nav>
+
+    <div class="hidden lg:block">
+      <Button href="/contact" variant="dark">
+        Book a Free Consultation
+      </Button>
+    </div>
+
+    <button
+      type="button"
+      id="mobile-nav-toggle"
+      aria-expanded="false"
+      aria-controls="mobile-nav"
+      class="flex h-10 w-10 items-center justify-center rounded-full border border-ink-900/15 lg:hidden"
+    >
+      <span class="sr-only">Toggle menu</span>
+      <svg
+        id="icon-open"
+        viewBox="0 0 24 24"
+        class="h-5 w-5"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="1.8"
+      >
+        <path stroke-linecap="round" d="M4 6h16M4 12h16M4 18h16" />
+      </svg>
+      <svg
+        id="icon-close"
+        viewBox="0 0 24 24"
+        class="hidden h-5 w-5"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="1.8"
+      >
+        <path stroke-linecap="round" d="M6 6l12 12M18 6L6 18" />
+      </svg>
+    </button>
+  </Container>
+
+  <div id="mobile-nav" class="hidden border-t border-ink-900/8 bg-bone-50 lg:hidden">
+    <Container class="flex flex-col gap-1 py-4">
+      {items.map((item) => (
+        <a
+          href={item.href}
+          class="rounded-lg px-3 py-3 text-base font-medium text-ink-900 hover:bg-ink-900/5"
+        >
+          {item.label}
+        </a>
+      ))}
+      <div class="mt-2 px-3">
+        <Button href="/contact" variant="primary" class="w-full">
+          Book a Free Consultation
+        </Button>
+      </div>
+    </Container>
+  </div>
+</header>
+
+<script>
+  const toggle = document.getElementById('mobile-nav-toggle');
+  const panel = document.getElementById('mobile-nav');
+  const iconOpen = document.getElementById('icon-open');
+  const iconClose = document.getElementById('icon-close');
+
+  toggle?.addEventListener('click', () => {
+    const isOpen = toggle.getAttribute('aria-expanded') === 'true';
+    toggle.setAttribute('aria-expanded', String(!isOpen));
+    panel?.classList.toggle('hidden');
+    iconOpen?.classList.toggle('hidden');
+    iconClose?.classList.toggle('hidden');
+  });
+</script>

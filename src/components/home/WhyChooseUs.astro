@@ -1,0 +1,55 @@
+---
+import Container from '../ui/Container.astro';
+import SectionHeading from '../ui/SectionHeading.astro';
+import Icon from '../ui/Icon.astro';
+
+const reasons = [
+  {
+    icon: 'compass' as const,
+    title: 'Strategy before tactics',
+    description:
+      'We start with your business goals, not a menu of services. Every recommendation ties back to growth, not channel quotas.',
+  },
+  {
+    icon: 'layers' as const,
+    title: 'Marketing and technology, together',
+    description:
+      'Campaigns and the website they send traffic to are built by the same team, so nothing gets lost in a handoff.',
+  },
+  {
+    icon: 'users' as const,
+    title: 'A real point of contact',
+    description:
+      'You work with a dedicated strategist who knows your account, not a rotating queue of account managers.',
+  },
+  {
+    icon: 'shield' as const,
+    title: 'Built on solid infrastructure',
+    description:
+      'Websites and tracking run on modern, secure, edge infrastructure — fast for visitors, reliable for you.',
+  },
+];
+---
+
+<section class="bg-ink-950 py-24 text-bone-50 lg:py-32">
+  <Container class="flex flex-col gap-12">
+    <SectionHeading
+      eyebrow="Why Hossain Growth"
+      title="A growth partner, not a vendor"
+      tone="dark"
+      description="We measure success by your business outcomes — not by how many services you buy."
+    />
+
+    <div class="grid gap-5 sm:grid-cols-2">
+      {reasons.map((reason) => (
+        <div class="flex flex-col gap-4 rounded-3xl border border-bone-50/10 bg-bone-50/5 p-8">
+          <span class="flex h-11 w-11 items-center justify-center rounded-xl bg-lime-400 text-ink-950">
+            <Icon name={reason.icon} class="h-5 w-5" />
+          </span>
+          <h3 class="font-display text-lg font-semibold text-bone-50">{reason.title}</h3>
+          <p class="text-sm text-ink-200">{reason.description}</p>
+        </div>
+      ))}
+    </div>
+  </Container>
+</section>

@@ -4,7 +4,7 @@ Premium digital marketing agency website + admin CMS, built on Astro (SSR) and C
 
 Planning docs: see [`docs/`](./docs) — `PROJECT_REQUIREMENTS.md`, `TECHNICAL_ARCHITECTURE.md`, `DATABASE_SCHEMA.md`, `API_DOCUMENTATION.md`, `DEVELOPMENT_ROADMAP.md`.
 
-This README covers **Phase 0/2 (infrastructure), Phase 3 (database architecture + backend API), and Phase 4 (secure admin authentication & authorization)**.
+This README covers **Phase 0/2 (infrastructure), Phase 3 (database architecture + backend API), Phase 4 (secure admin authentication & authorization), and Phase 5 (public website UI/UX)**.
 
 ## Stack
 
@@ -249,8 +249,18 @@ src/
   pages/
     api/            Backend API routes (one folder per resource, [id].ts for item routes)
     index.astro     Public homepage
-  components/       React islands (admin/public/shared)
-  layouts/          Astro layouts
+    about.astro, services/, portfolio/, case-studies/, industries/,
+    blog/, contact.astro, privacy-policy.astro,
+    terms-and-conditions.astro   Public marketing site (14 page types)
+    robots.txt.ts, sitemap.xml.ts  Dynamic SEO endpoints
+  components/
+    home/            Homepage section components (Hero, ServicesOverview, …)
+    layout/          Navbar, Footer
+    ui/              Shared design-system primitives (Button, Container, Faq, …)
+                     React islands (admin/public/shared) live alongside these
+  content/           Static, non-DB marketing content (industries, service detail copy)
+  layouts/           Astro layouts — `PublicLayout` (bare shell, used by admin auth
+                     pages), `SiteLayout` (marketing chrome: nav + footer + SEO)
   middleware.ts     Resolves the session cookie into `locals.session` on every request
   lib/
     db/schema/      Drizzle schema, one file per domain, barrel-exported
@@ -262,6 +272,8 @@ src/
     rate-limit.ts   KV-backed fixed-window limiter
     audit.ts        Writes to activity_logs
     turnstile.ts    Server-side Turnstile verification
+    content/public.ts  Published-only read queries for the public site
+    seo.ts          SEO metadata defaults + JSON-LD schema builders
   env.d.ts          Astro.locals / Cloudflare runtime types
 migrations/         Real migrations (schema + system reference data) — safe for every environment
 seeds/              Dev-only fake sample data — local only, never applied to staging/production
@@ -302,6 +314,7 @@ wrangler.jsonc      Cloudflare bindings (D1/R2/KV), env-specific config
 - [x] RESTful CRUD for every resource, pagination/filter/sort/search, Zod validation, centralized error handling, consistent response envelopes, audit logging on every mutation, rate limiting on login + public lead creation
 - [x] Full lead management API: status pipeline, assignment, notes, follow-up dates, source/country/service filters, CSV export
 - [x] **Phase 4** — Super Admin / Admin / Editor role model with configurable, per-role permissions (`PUT /api/roles/:id/permissions`); PBKDF2-600k password hashing; server-side session management (signed JWT + `tokenVersion` invalidation on password change/reset, 8h expiry); password reset workflow (Turnstile-verified request → one-time token → reset); account lockout (5 failed attempts/email → 15 min) on top of IP rate limiting; `HttpOnly` + `Secure` + `SameSite=Strict` session cookie; CSRF Origin check on authenticated mutations; Turnstile on login, lead creation, and password-reset requests; server-enforced `/admin` route protection (not just client-side); no default/baked-in admin password anywhere — `scripts/create-super-admin.mjs` documents real provisioning
+- [x] **Phase 5** — Full public website UI/UX: dark-charcoal/off-white/lime design system (Tailwind v4 `@theme` tokens, Space Grotesk + Inter), accessible Navbar/Footer, bento-grid homepage (16 sections), Services overview + 6 SSR service detail pages (hero/problem-solution/benefits/process/deliverables/case studies/FAQ/CTA), Portfolio + project detail, Case Studies + detail, Industries, Blog + post detail, Contact (lead form with Turnstile), Privacy Policy, Terms & Conditions. All list/detail content is D1-driven through `lib/content/public.ts` (published-only); industries and per-service long-form copy are static (`src/content/`) since they aren't well modeled by the existing schema. SEO: per-page canonical/OG/Twitter meta, Organization/Service/Article/BreadcrumbList/FAQPage JSON-LD, dynamic `/sitemap.xml` and `/robots.txt`. Respects `prefers-reduced-motion`; mobile nav is a vanilla-JS (non-React) toggle for performance. **Known scope cut:** no public media-serving endpoint exists yet (R2-backed images), so project/post imagery uses gradient placeholders rather than real `<img>` tags — wire up a media CDN route before using real photography.
 - [x] `docs/API_DOCUMENTATION.md` updated to the actual implemented endpoints, including the full auth/security surface
 - [x] Unit tests (31, Vitest) + live smoke test (88/88 checks) against a real `wrangler dev` instance with real D1/R2/KV, covering the full security surface above
 - [ ] Staging/production resources and secrets (deferred — not deploying yet)

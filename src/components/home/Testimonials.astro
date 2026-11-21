@@ -1,0 +1,42 @@
+---
+import Container from '../ui/Container.astro';
+import SectionHeading from '../ui/SectionHeading.astro';
+
+interface TestimonialRow {
+  id: string;
+  clientName: string;
+  clientTitle: string | null;
+  clientCompany: string | null;
+  content: string;
+}
+
+interface Props {
+  testimonials: TestimonialRow[];
+}
+
+const { testimonials } = Astro.props;
+---
+
+{testimonials.length > 0 && (
+  <section class="py-24 lg:py-32">
+    <Container class="flex flex-col gap-12">
+      <SectionHeading eyebrow="Client feedback" title="What it's like to work with us" />
+
+      <div class="grid gap-5 lg:grid-cols-3">
+        {testimonials.map((testimonial) => (
+          <figure class="flex flex-col gap-6 rounded-3xl border border-ink-900/8 bg-bone-100 p-8">
+            <blockquote class="text-base text-ink-800">
+              &ldquo;{testimonial.content}&rdquo;
+            </blockquote>
+            <figcaption class="mt-auto">
+              <p class="font-semibold text-ink-900">{testimonial.clientName}</p>
+              <p class="text-sm text-ink-600">
+                {[testimonial.clientTitle, testimonial.clientCompany].filter(Boolean).join(', ')}
+              </p>
+            </figcaption>
+          </figure>
+        ))}
+      </div>
+    </Container>
+  </section>
+)}

@@ -1,0 +1,20 @@
+---
+interface Props {
+  class?: string;
+  tone?: 'lime' | 'dark' | 'outline';
+}
+
+const { class: className = '', tone = 'outline' } = Astro.props;
+
+const tones = {
+  lime: 'bg-lime-400 text-ink-950',
+  dark: 'bg-ink-900 text-bone-50',
+  outline: 'border border-ink-900/15 text-ink-600',
+};
+---
+
+<span
+  class={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-wide ${tones[tone]} ${className}`}
+>
+  <slot />
+</span>

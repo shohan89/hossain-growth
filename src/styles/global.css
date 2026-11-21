@@ -1,1 +1,110 @@
 @import 'tailwindcss';
+
+@theme {
+  --font-display: 'Space Grotesk', 'Inter', system-ui, sans-serif;
+  --font-sans: 'Inter', system-ui, sans-serif;
+
+  --color-ink-950: #0b0c0d;
+  --color-ink-900: #121314;
+  --color-ink-800: #1a1b1d;
+  --color-ink-700: #26282b;
+  --color-ink-600: #3a3d41;
+  --color-ink-400: #74787e;
+  --color-ink-200: #c6c9ce;
+
+  --color-bone-50: #fafaf7;
+  --color-bone-100: #f3f2ec;
+  --color-bone-200: #e8e6db;
+
+  --color-lime-400: #d6ff3f;
+  --color-lime-500: #c2eb2b;
+  --color-lime-600: #a3c91f;
+
+  --animate-fade-up: fade-up 0.6s ease-out both;
+
+  @keyframes fade-up {
+    from {
+      opacity: 0;
+      transform: translateY(12px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+}
+
+@layer base {
+  html {
+    scroll-behavior: smooth;
+  }
+
+  body {
+    background-color: var(--color-bone-50);
+    color: var(--color-ink-900);
+    font-family: var(--font-sans);
+  }
+
+  h1,
+  h2,
+  h3,
+  h4 {
+    font-family: var(--font-display);
+    letter-spacing: -0.02em;
+  }
+
+  ::selection {
+    background-color: var(--color-lime-400);
+    color: var(--color-ink-950);
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--color-lime-500);
+    outline-offset: 2px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+.prose-content {
+  max-width: 68ch;
+}
+
+.prose-content > * + * {
+  margin-top: 1.25em;
+}
+
+.prose-content h2 {
+  margin-top: 2em;
+  font-size: 1.5em;
+}
+
+.prose-content h3 {
+  margin-top: 1.75em;
+  font-size: 1.25em;
+}
+
+.prose-content ul {
+  list-style: disc;
+  padding-left: 1.25em;
+}
+
+.prose-content a {
+  color: var(--color-ink-900);
+  text-decoration: underline;
+  text-decoration-color: var(--color-lime-500);
+  text-decoration-thickness: 2px;
+}

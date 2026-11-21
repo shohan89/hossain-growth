@@ -1,0 +1,63 @@
+---
+import { env } from 'cloudflare:workers';
+import SiteLayout from '../../layouts/SiteLayout.astro';
+import Container from '../../components/ui/Container.astro';
+import Breadcrumbs from '../../components/ui/Breadcrumbs.astro';
+import FinalCta from '../../components/home/FinalCta.astro';
+import { getDb } from '../../lib/db/client';
+import { getPublishedPortfolioProjects } from '../../lib/content/public';
+
+const db = getDb(env.DB);
+const projects = await getPublishedPortfolioProjects(db);
+---
+
+<SiteLayout
+  title="Portfolio"
+  description="A selection of the digital marketing and web development projects Hossain Growth has delivered for clients."
+>
+  <section class="bg-ink-950 py-20 text-bone-50 lg:py-28">
+    <Container class="flex flex-col gap-6">
+      <Breadcrumbs
+        items={[{ label: 'Home', href: '/' }, { label: 'Portfolio' }]}
+        class="text-ink-400"
+      />
+      <h1 class="max-w-3xl font-display text-4xl font-bold sm:text-5xl lg:text-6xl">Our work.</h1>
+      <p class="max-w-2xl text-lg text-ink-200">
+        A selection of projects across marketing, content, and web development.
+      </p>
+    </Container>
+  </section>
+
+  <section class="py-20 lg:py-28">
+    <Container>
+      {projects.length === 0 ? (
+        <p class="text-ink-600">New project case studies are on the way — check back soon.</p>
+      ) : (
+        <div class="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+          {projects.map((project) => (
+            <a
+              href={`/portfolio/${project.slug}`}
+              class="group flex flex-col gap-4 rounded-3xl border border-ink-900/8 bg-bone-100 p-8 transition-colors hover:border-lime-500/60"
+            >
+              <div class="h-40 rounded-2xl bg-gradient-to-br from-ink-900 to-ink-700" />
+              <div class="flex flex-col gap-1">
+                {project.clientName && (
+                  <span class="text-xs font-semibold uppercase tracking-wide text-lime-600">
+                    {project.clientName}
+                  </span>
+                )}
+                <h2 class="font-display text-lg font-semibold text-ink-900">{project.title}</h2>
+                <p class="text-sm text-ink-600">{project.summary}</p>
+              </div>
+              <span class="mt-auto text-sm font-semibold text-ink-900 group-hover:text-lime-600">
+                View project →
+              </span>
+            </a>
+          ))}
+        </div>
+      )}
+    </Container>
+  </section>
+
+  <FinalCta />
+</SiteLayout>

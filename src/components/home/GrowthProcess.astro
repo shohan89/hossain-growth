@@ -1,0 +1,53 @@
+---
+import Container from '../ui/Container.astro';
+import SectionHeading from '../ui/SectionHeading.astro';
+
+const steps = [
+  {
+    number: '01',
+    title: 'Discover',
+    description: 'We learn your business, market, and goals before recommending a single tactic.',
+  },
+  {
+    number: '02',
+    title: 'Strategize',
+    description: 'We build a channel and content plan mapped directly to revenue outcomes.',
+  },
+  {
+    number: '03',
+    title: 'Execute',
+    description: 'Campaigns, content, and web experiences launch in sync, not in isolation.',
+  },
+  {
+    number: '04',
+    title: 'Optimize',
+    description: 'We review performance on a fixed cadence and adjust what is not working.',
+  },
+  {
+    number: '05',
+    title: 'Scale',
+    description:
+      'Budget and focus shift toward the channels and offers proven to grow your business.',
+  },
+];
+---
+
+<section class="py-24 lg:py-32">
+  <Container class="flex flex-col gap-12">
+    <SectionHeading
+      eyebrow="Our process"
+      title="A growth process built on evidence, not guesswork"
+      description="Five stages, repeated every cycle, so your strategy keeps pace with what's actually working."
+    />
+
+    <div class="grid gap-6 sm:grid-cols-2 lg:grid-cols-5">
+      {steps.map((step) => (
+        <div class="flex flex-col gap-3 rounded-3xl border border-ink-900/8 p-6">
+          <span class="font-display text-3xl font-bold text-lime-500">{step.number}</span>
+          <h3 class="font-display text-lg font-semibold text-ink-900">{step.title}</h3>
+          <p class="text-sm text-ink-600">{step.description}</p>
+        </div>
+      ))}
+    </div>
+  </Container>
+</section>

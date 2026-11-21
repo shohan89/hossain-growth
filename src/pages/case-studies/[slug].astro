@@ -1,0 +1,93 @@
+---
+import { env } from 'cloudflare:workers';
+import SiteLayout from '../../layouts/SiteLayout.astro';
+import Container from '../../components/ui/Container.astro';
+import Breadcrumbs from '../../components/ui/Breadcrumbs.astro';
+import FinalCta from '../../components/home/FinalCta.astro';
+import { getDb } from '../../lib/db/client';
+import { getCaseStudyBySlug } from '../../lib/content/public';
+import { articleSchema } from '../../lib/seo';
+
+export const prerender = false;
+
+const { slug } = Astro.params;
+const db = getDb(env.DB);
+const caseStudy = slug ? await getCaseStudyBySlug(db, slug) : null;
+
+if (!caseStudy) {
+  return new Response('Case study not found', { status: 404 });
+}
+
+const canonicalUrl = new URL(`/case-studies/${caseStudy.slug}`, Astro.url.origin).toString();
+---
+
+<SiteLayout
+  title={caseStudy.title}
+  description={caseStudy.results ?? undefined}
+  canonicalUrl={canonicalUrl}
+  structuredData={articleSchema({
+    headline: caseStudy.title,
+    description: caseStudy.results ?? undefined,
+    url: canonicalUrl,
+    datePublished: caseStudy.publishedAt?.toISOString(),
+  })}
+>
+  <section class="bg-ink-950 py-20 text-bone-50 lg:py-28">
+    <Container class="flex flex-col gap-6">
+      <Breadcrumbs
+        items={[
+          { label: 'Home', href: '/' },
+          { label: 'Case Studies', href: '/case-studies' },
+          { label: caseStudy.title },
+        ]}
+        class="text-ink-400"
+      />
+      <div class="flex flex-wrap gap-3 text-sm font-semibold uppercase tracking-wide text-lime-400">
+        {caseStudy.client && <span>{caseStudy.client}</span>}
+        {caseStudy.industry && <span>{caseStudy.industry}</span>}
+      </div>
+      <h1 class="max-w-3xl font-display text-4xl font-bold sm:text-5xl lg:text-6xl">
+        {caseStudy.title}
+      </h1>
+    </Container>
+  </section>
+
+  <section class="py-20 lg:py-28">
+    <Container class="grid gap-10 lg:grid-cols-3">
+      {caseStudy.challenge && (
+        <div class="flex flex-col gap-3">
+          <span class="text-sm font-semibold uppercase tracking-[0.18em] text-lime-600">
+            Challenge
+          </span>
+          <p class="text-ink-600">{caseStudy.challenge}</p>
+        </div>
+      )}
+      {caseStudy.solution && (
+        <div class="flex flex-col gap-3">
+          <span class="text-sm font-semibold uppercase tracking-[0.18em] text-lime-600">
+            Solution
+          </span>
+          <p class="text-ink-600">{caseStudy.solution}</p>
+        </div>
+      )}
+      {caseStudy.results && (
+        <div class="flex flex-col gap-3">
+          <span class="text-sm font-semibold uppercase tracking-[0.18em] text-lime-600">
+            Results
+          </span>
+          <p class="text-ink-600">{caseStudy.results}</p>
+        </div>
+      )}
+    </Container>
+  </section>
+
+  {caseStudy.content && (
+    <section class="bg-bone-100 py-20 lg:py-28">
+      <Container class="prose-content text-ink-800">
+        <div set:html={caseStudy.content} />
+      </Container>
+    </section>
+  )}
+
+  <FinalCta />
+</SiteLayout>

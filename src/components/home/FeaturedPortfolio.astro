@@ -1,0 +1,58 @@
+---
+import Container from '../ui/Container.astro';
+import SectionHeading from '../ui/SectionHeading.astro';
+import Button from '../ui/Button.astro';
+
+interface ProjectRow {
+  slug: string;
+  title: string;
+  clientName: string | null;
+  summary: string | null;
+}
+
+interface Props {
+  projects: ProjectRow[];
+}
+
+const { projects } = Astro.props;
+---
+
+{projects.length > 0 && (
+  <section class="py-24 lg:py-32">
+    <Container class="flex flex-col gap-12">
+      <div class="flex flex-col items-start justify-between gap-6 sm:flex-row sm:items-end">
+        <SectionHeading
+          eyebrow="Featured work"
+          title="Projects we're proud to have built"
+          class="sm:max-w-xl"
+        />
+        <Button href="/portfolio" variant="outline">
+          View all work
+        </Button>
+      </div>
+
+      <div class="grid gap-5 lg:grid-cols-3">
+        {projects.map((project) => (
+          <a
+            href={`/portfolio/${project.slug}`}
+            class="group flex flex-col gap-4 rounded-3xl border border-ink-900/8 bg-bone-100 p-8 transition-colors hover:border-lime-500/60"
+          >
+            <div class="h-36 rounded-2xl bg-gradient-to-br from-ink-900 to-ink-700" />
+            <div class="flex flex-col gap-1">
+              {project.clientName && (
+                <span class="text-xs font-semibold uppercase tracking-wide text-lime-600">
+                  {project.clientName}
+                </span>
+              )}
+              <h3 class="font-display text-lg font-semibold text-ink-900">{project.title}</h3>
+              <p class="text-sm text-ink-600">{project.summary}</p>
+            </div>
+            <span class="mt-auto text-sm font-semibold text-ink-900 group-hover:text-lime-600">
+              View project →
+            </span>
+          </a>
+        ))}
+      </div>
+    </Container>
+  </section>
+)}

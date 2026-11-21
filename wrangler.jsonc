@@ -1,0 +1,103 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "hossain-growth",
+  "compatibility_date": "2026-11-16",
+  "compatibility_flags": ["nodejs_compat"],
+  // No top-level "main" here: the Astro Cloudflare adapter's build pipeline
+  // (astro dev / astro build / astro check) resolves this file itself and
+  // requires "main" to already point at an existing file at config-resolution
+  // time — which is impossible before the first build has run. The adapter
+  // generates its own dist/server/wrangler.json with the correct "main" and
+  // "assets" paths after each build; use that for `wrangler dev`/`deploy`
+  // against the built output (see package.json "preview"/"deploy:*" scripts).
+  "assets": {
+    "directory": "./dist/client",
+    "binding": "ASSETS",
+  },
+  "observability": {
+    "enabled": true,
+  },
+
+  // Default (development) bindings — used by `wrangler dev` / `npm run preview`.
+  // These point at real dev-tier Cloudflare resources created for local work.
+  // NEVER point these at production resources.
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "hossain-growth-dev",
+      "database_id": "fb83d37f-8d99-40a3-b5f6-b2852b5e3643",
+    },
+  ],
+  "r2_buckets": [
+    {
+      "binding": "MEDIA",
+      "bucket_name": "hossain-growth-media-dev",
+    },
+  ],
+  "kv_namespaces": [
+    {
+      "binding": "SESSIONS",
+      "id": "5369f2d115f44557993fa6bfbe04801b",
+    },
+    {
+      "binding": "CACHE",
+      "id": "4c62b0e08217426ebafcc89c09a6f096",
+    },
+  ],
+  "vars": {
+    "SITE_URL": "http://localhost:4321",
+    "ENVIRONMENT": "development",
+  },
+
+  "env": {
+    "staging": {
+      "name": "hossain-growth-staging",
+      "vars": {
+        "SITE_URL": "https://staging.hossaingrowth.com",
+        "ENVIRONMENT": "staging",
+      },
+      "d1_databases": [
+        {
+          "binding": "DB",
+          "database_name": "hossain-growth-staging",
+          "database_id": "REPLACE_WITH_STAGING_D1_ID",
+        },
+      ],
+      "r2_buckets": [
+        {
+          "binding": "MEDIA",
+          "bucket_name": "hossain-growth-media-staging",
+        },
+      ],
+      "kv_namespaces": [
+        { "binding": "SESSIONS", "id": "REPLACE_WITH_STAGING_SESSIONS_KV_ID" },
+        { "binding": "CACHE", "id": "REPLACE_WITH_STAGING_CACHE_KV_ID" },
+      ],
+    },
+
+    "production": {
+      "name": "hossain-growth-production",
+      "vars": {
+        "SITE_URL": "https://hossaingrowth.com",
+        "ENVIRONMENT": "production",
+      },
+      "d1_databases": [
+        {
+          "binding": "DB",
+          "database_name": "hossain-growth-production",
+          "database_id": "REPLACE_WITH_PRODUCTION_D1_ID",
+        },
+      ],
+      "r2_buckets": [
+        {
+          "binding": "MEDIA",
+          "bucket_name": "hossain-growth-media-production",
+        },
+      ],
+      "kv_namespaces": [
+        { "binding": "SESSIONS", "id": "REPLACE_WITH_PRODUCTION_SESSIONS_KV_ID" },
+        { "binding": "CACHE", "id": "REPLACE_WITH_PRODUCTION_CACHE_KV_ID" },
+      ],
+    },
+  },
+}

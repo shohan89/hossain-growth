@@ -1,4 +1,7 @@
-const PBKDF2_ITERATIONS = 210_000;
+// OWASP Password Storage Cheat Sheet (2023+) minimum for PBKDF2-HMAC-SHA256.
+// Stored per-hash in the output string, so raising this never breaks
+// verification of hashes created with an older, lower count.
+const PBKDF2_ITERATIONS = 600_000;
 const SALT_BYTES = 16;
 const KEY_LENGTH_BITS = 256;
 

@@ -8,6 +8,7 @@ export interface SessionPayload {
   email: string;
   roleKey: string;
   permissions: string[];
+  tokenVersion: number;
 }
 
 function getSigningKey(secret: string): Uint8Array {
@@ -26,6 +27,12 @@ export async function createSessionToken(
   return { token, maxAge: SESSION_TTL_SECONDS };
 }
 
+/**
+ * Verifies signature and expiration only. Does NOT check tokenVersion
+ * against the live KV cache — that's the middleware's job, since it needs
+ * a KV read this pure function shouldn't own (keeps this testable without
+ * any binding).
+ */
 export async function verifySessionToken(
   token: string,
   secret: string,
@@ -36,6 +43,7 @@ export async function verifySessionToken(
       typeof payload.sub !== 'string' ||
       typeof payload.email !== 'string' ||
       typeof payload.roleKey !== 'string' ||
+      typeof payload.tokenVersion !== 'number' ||
       !Array.isArray(payload.permissions)
     ) {
       return null;
@@ -45,6 +53,7 @@ export async function verifySessionToken(
       email: payload.email,
       roleKey: payload.roleKey,
       permissions: payload.permissions as string[],
+      tokenVersion: payload.tokenVersion,
     };
   } catch {
     return null;

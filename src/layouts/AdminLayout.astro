@@ -1,0 +1,54 @@
+---
+import '../styles/global.css';
+
+interface Props {
+  title: string;
+}
+
+// Defense-in-depth: the middleware already redirects unauthenticated
+// requests to /admin/* before this ever renders, but a protected layout
+// should never assume that — it enforces its own check too.
+if (!Astro.locals.session) {
+  return Astro.redirect(`/admin/login?next=${encodeURIComponent(Astro.url.pathname)}`);
+}
+
+const { title } = Astro.props;
+const session = Astro.locals.session;
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>{title} | Hossain Growth Admin</title>
+  </head>
+  <body class="min-h-screen bg-slate-50 text-slate-900">
+    <header class="flex items-center justify-between border-b border-slate-200 bg-white px-6 py-4">
+      <span class="font-semibold">Hossain Growth Admin</span>
+      <div class="flex items-center gap-4 text-sm text-slate-600">
+        <span>
+          {session.email} · {session.roleKey}
+        </span>
+        <form method="post" action="/api/auth/logout" id="logout-form">
+          <button type="submit" class="text-slate-500 underline">
+            Log out
+          </button>
+        </form>
+      </div>
+    </header>
+    <main class="p-6">
+      <slot />
+    </main>
+    <script>
+      // Logout is a state-changing request, so do it via fetch (keeps the
+      // CSRF Origin check and cookie semantics identical to the rest of the
+      // API) instead of a plain form POST navigation.
+      document.getElementById('logout-form')?.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        await fetch('/api/auth/logout', { method: 'POST' });
+        window.location.href = '/admin/login';
+      });
+    </script>
+  </body>
+</html>

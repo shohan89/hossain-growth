@@ -3,7 +3,7 @@
 // format used by src/lib/auth/password.ts, for writing seed SQL by hand.
 // Usage: node scripts/hash-password.mjs <password>
 
-const PBKDF2_ITERATIONS = 210_000;
+const PBKDF2_ITERATIONS = 600_000; // keep in sync with src/lib/auth/password.ts
 
 async function hashPassword(password) {
   const salt = crypto.getRandomValues(new Uint8Array(16));

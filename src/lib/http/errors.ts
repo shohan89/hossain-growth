@@ -46,3 +46,15 @@ export class RateLimitedError extends ApiError {
     super(429, 'RATE_LIMITED', message);
   }
 }
+
+export class AccountLockedError extends ApiError {
+  constructor(message = 'Too many failed login attempts. Try again later.') {
+    super(423, 'ACCOUNT_LOCKED', message);
+  }
+}
+
+export class CsrfError extends ApiError {
+  constructor(message = 'Request origin does not match this site.') {
+    super(403, 'CSRF_REJECTED', message);
+  }
+}

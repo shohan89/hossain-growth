@@ -5,13 +5,14 @@
 -- Apply with:
 --   npx wrangler d1 execute hossain-growth-dev --local --file=seeds/dev-seed.sql
 --
--- The dev admin password hash below corresponds to "DevAdmin!2026Local"
+-- The dev password hash below corresponds to "DevAdmin!2026Local"
 -- (generated with: node scripts/hash-password.mjs "DevAdmin!2026Local").
 -- Dev-only credential — never reused anywhere else.
 
 INSERT INTO admin_users (id, email, password_hash, name, role_id, is_active) VALUES
-  ('user_dev_admin', 'dev-admin@hossaingrowth.local', 'pbkdf2$210000$0fyUUwNgygmhfAkpam+VUA==$Q9Lm4kDL2OjlW9WkJLJ7pSW7Y6RO1JV/52YWw6zKsUQ=', 'Dev Admin', 'role_admin', 1),
-  ('user_dev_editor', 'dev-editor@hossaingrowth.local', 'pbkdf2$210000$0fyUUwNgygmhfAkpam+VUA==$Q9Lm4kDL2OjlW9WkJLJ7pSW7Y6RO1JV/52YWw6zKsUQ=', 'Dev Editor', 'role_editor', 1);
+  ('user_dev_super_admin', 'dev-superadmin@hossaingrowth.local', 'pbkdf2$600000$KiZbLVdEylFSDRBTTbrrFw==$2WYXDns6/k8Xr+DssryrL+fM49HIG1CPc5np6ytjtBY=', 'Dev Super Admin', 'role_super_admin', 1),
+  ('user_dev_admin', 'dev-admin@hossaingrowth.local', 'pbkdf2$600000$KiZbLVdEylFSDRBTTbrrFw==$2WYXDns6/k8Xr+DssryrL+fM49HIG1CPc5np6ytjtBY=', 'Dev Admin', 'role_admin', 1),
+  ('user_dev_editor', 'dev-editor@hossaingrowth.local', 'pbkdf2$600000$KiZbLVdEylFSDRBTTbrrFw==$2WYXDns6/k8Xr+DssryrL+fM49HIG1CPc5np6ytjtBY=', 'Dev Editor', 'role_editor', 1);
 
 INSERT INTO service_categories (id, slug, name, order_index) VALUES
   ('svccat_dev_ads', 'paid-ads', 'Paid Advertising', 0),

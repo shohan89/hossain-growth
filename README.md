@@ -4,21 +4,21 @@ Premium digital marketing agency website + admin CMS, built on Astro (SSR) and C
 
 Planning docs: see [`docs/`](./docs) — `PROJECT_REQUIREMENTS.md`, `TECHNICAL_ARCHITECTURE.md`, `DATABASE_SCHEMA.md`, `API_DOCUMENTATION.md`, `DEVELOPMENT_ROADMAP.md`.
 
-This README covers **Phase 0/2 (infrastructure) and Phase 3 (database architecture + backend API)**.
+This README covers **Phase 0/2 (infrastructure), Phase 3 (database architecture + backend API), and Phase 4 (secure admin authentication & authorization)**.
 
 ## Stack
 
-|                 |                                                                                              |
-| --------------- | -------------------------------------------------------------------------------------------- |
-| Framework       | Astro 7 (SSR, `output: 'server'`)                                                            |
-| Adapter         | `@astrojs/cloudflare` 14 (Workers target — Pages support dropped)                            |
-| UI              | React 19 islands + Tailwind CSS 4                                                            |
-| Validation      | Zod + `drizzle-zod` (schemas derived from the Drizzle table defs)                            |
-| ORM             | Drizzle ORM (D1 / SQLite dialect)                                                            |
-| Auth primitives | `jose` (WebCrypto — no Node-only JWT libs on Workers), WebCrypto PBKDF2 for password hashing |
-| Infra           | Cloudflare Workers, D1, R2, KV, Turnstile                                                    |
-| Testing         | Vitest 4 + `@cloudflare/vitest-plugin` (unit), live smoke test script (integration)          |
-| Tooling         | TypeScript, ESLint 10 (flat config), Prettier, Wrangler 4                                    |
+|                 |                                                                                                                                                |
+| --------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| Framework       | Astro 7 (SSR, `output: 'server'`)                                                                                                              |
+| Adapter         | `@astrojs/cloudflare` 14 (Workers target — Pages support dropped)                                                                              |
+| UI              | React 19 islands + Tailwind CSS 4                                                                                                              |
+| Validation      | Zod + `drizzle-zod` (schemas derived from the Drizzle table defs)                                                                              |
+| ORM             | Drizzle ORM (D1 / SQLite dialect)                                                                                                              |
+| Auth primitives | `jose` (WebCrypto — no Node-only JWT libs on Workers), WebCrypto PBKDF2 (600k iterations) for password hashing, Turnstile on login/leads/reset |
+| Infra           | Cloudflare Workers, D1, R2, KV, Turnstile                                                                                                      |
+| Testing         | Vitest 4 + `@cloudflare/vitest-plugin` (unit), live smoke test script (integration)                                                            |
+| Tooling         | TypeScript, ESLint 10 (flat config), Prettier, Wrangler 4                                                                                      |
 
 ## Prerequisites
 
@@ -120,10 +120,14 @@ Never commit `.dev.vars`, never hardcode secrets in source, never put secrets in
 
 Schema lives in `src/lib/db/schema/` (Drizzle ORM, one file per domain: `auth`, `content`, `leads`, `media`, `pages`, `settings`, `audit` — barrel-exported from `schema/index.ts`). 23 tables total: the 20 required by the project spec plus three pure join tables (`role_permissions`, `blog_post_tags`, `portfolio_project_images`) needed for proper normalization. Full column-level detail: `docs/DATABASE_SCHEMA.md`.
 
-Two real migrations (applied to every environment, including staging/production when they exist):
+Four real migrations (applied to every environment, including staging/production when they exist):
 
 - `migrations/0000_initial_schema.sql` — all 23 tables, indexes, and foreign keys (generated via `drizzle-kit generate`).
-- `migrations/0001_seed_reference_data.sql` — the 3 system roles (`admin`, `editor`, `viewer`) and ~35 permission keys, plus their role→permission grants. This is **system configuration, not fake data** — every environment needs it to function, so it's a real migration (idempotent via `INSERT OR IGNORE`).
+- `migrations/0001_seed_reference_data.sql` — the permission catalog (~35 keys) and the original `admin`/`editor` role grants. This is **system configuration, not fake data** — every environment needs it to function, so it's a real migration (idempotent via `INSERT OR IGNORE`).
+- `migrations/0002_auth_hardening.sql` — adds `admin_users.token_version` (for server-side session invalidation) and the `password_reset_tokens` table.
+- `migrations/0003_realign_roles.sql` — adds the `super_admin` role (every permission), narrows `admin` by revoking `users.manage`/`roles.manage`, and drops the earlier `viewer` role — see the Phase 4 role model in `docs/API_DOCUMENTATION.md`.
+
+No migration or seed file anywhere ever creates an admin user — see "Initial Super Admin provisioning" below.
 
 ```bash
 npm run db:generate          # generate a new migration from schema changes
@@ -143,12 +147,29 @@ npm run db:seed:local
 
 Seeded accounts (local only):
 
-| Email                            | Password             | Role   |
-| -------------------------------- | -------------------- | ------ |
-| `dev-admin@hossaingrowth.local`  | `DevAdmin!2026Local` | admin  |
-| `dev-editor@hossaingrowth.local` | `DevAdmin!2026Local` | editor |
+| Email                                | Password             | Role          |
+| ------------------------------------ | -------------------- | ------------- |
+| `dev-superadmin@hossaingrowth.local` | `DevAdmin!2026Local` | `super_admin` |
+| `dev-admin@hossaingrowth.local`      | `DevAdmin!2026Local` | `admin`       |
+| `dev-editor@hossaingrowth.local`     | `DevAdmin!2026Local` | `editor`      |
 
 The password hash in that file was generated with `node scripts/hash-password.mjs "<password>"`, which reproduces the exact `pbkdf2$<iterations>$<salt>$<hash>` format `src/lib/auth/password.ts` uses — handy for writing any future hand-written seed/fixture SQL.
+
+## Initial Super Admin provisioning (staging/production)
+
+There is **no default admin password anywhere in this codebase** — not in a migration, not in an environment variable, not in source. For a real environment, generate the first Super Admin yourself:
+
+```bash
+node scripts/create-super-admin.mjs <email> "<name>"
+```
+
+It prompts for the password locally, hashes it the same way the app does, and only **prints** the `INSERT` statement — it never executes it against a remote database itself. Run the printed command yourself:
+
+```bash
+npx wrangler d1 execute hossain-growth-production --remote --command "<printed SQL>"
+```
+
+That's a deliberate human checkpoint: creating the first real admin credential for a live environment should never be something a script does unattended.
 
 ## 5. Run locally
 
@@ -197,8 +218,8 @@ npm run preview                       # in another terminal: build + run under w
 node scripts/smoke-test.mjs           # live end-to-end smoke test against it
 ```
 
-- **Unit tests** (`test/*.spec.ts`): password hashing, RBAC permission checks, pagination/query parsing. 16 tests, pure logic, no bindings touched.
-- **Live smoke test** (`scripts/smoke-test.mjs`): exercises every API endpoint against a real running `wrangler dev` instance — login/logout, RBAC boundaries (editor forbidden from `/api/admin-users`), validation errors, full CRUD + joins on several resources, media upload to R2, SEO metadata upsert, the complete lead pipeline (public create → Turnstile check → admin status/assignment/notes → CSV export), rate limiting, and audit-log verification. 49/49 checks passing. Requires `npm run db:seed:local` first (uses the seeded dev admin/editor accounts).
+- **Unit tests** (`test/*.spec.ts`, 31 passing, pure logic, no bindings touched): password hashing, RBAC permission checks, pagination/query parsing, session JWT round-trip + tamper/expiry/malformed rejection, account-lockout threshold, CSRF Origin-matching.
+- **Live smoke test** (`scripts/smoke-test.mjs`, 88/88 checks passing): exercises every API endpoint against a real running `wrangler dev` instance — login/logout, the three-role RBAC boundary (super admin vs. narrowed admin vs. editor), configurable-permissions endpoints, account lockout, Turnstile enforcement on login/leads/reset, CSRF Origin rejection, session-cookie attributes, server-side `/admin` route protection, password-change session invalidation, the full password-reset workflow, full CRUD + joins on several resources, media upload to R2, SEO metadata upsert, the complete lead pipeline (public create → admin status/assignment/notes → CSV export), rate limiting, and audit-log verification. Requires `npm run db:seed:local` first (uses the seeded dev super admin/admin/editor accounts). Repeatable — each run uses time-derived fake source IPs and emails so re-running it immediately doesn't trip the previous run's rate limits/lockouts.
 - A D1-binding Vitest suite was written (`test/db.spec.ts.skip`) but is currently blocked by an upstream bug — see "Known rough edges" below. The live smoke test covers the same ground against real D1/R2.
 
 ## 9. Scripts reference
@@ -244,7 +265,7 @@ src/
   env.d.ts          Astro.locals / Cloudflare runtime types
 migrations/         Real migrations (schema + system reference data) — safe for every environment
 seeds/              Dev-only fake sample data — local only, never applied to staging/production
-scripts/            hash-password.mjs, smoke-test.mjs
+scripts/            hash-password.mjs, create-super-admin.mjs, smoke-test.mjs
 test/               Vitest unit tests
 docs/               Planning + API documentation
 wrangler.jsonc      Cloudflare bindings (D1/R2/KV), env-specific config
@@ -277,9 +298,10 @@ wrangler.jsonc      Cloudflare bindings (D1/R2/KV), env-specific config
 - [x] Frontend ↔ backend connection verified (homepage React island calls `/api/health`)
 - [x] Verified locally: `npm run dev` and `npm run preview` both serve the homepage (200) and a passing health check
 - [x] Verified remotely: real upload/delete round-trip against the remote R2 bucket, migration applied to remote dev D1
-- [x] **Phase 3** — 23-table normalized D1 schema (20 required + 3 join tables), two real migrations (schema + seeded roles/permissions), dev-only seed data kept separate from migrations
-- [x] RESTful CRUD for every resource, pagination/filter/sort/search, Zod validation, centralized error handling, consistent response envelopes, RBAC (3 roles / ~35 permissions), audit logging on every mutation, rate limiting on login + public lead creation
+- [x] **Phase 3** — 23-table normalized D1 schema (20 required + 3 join tables), real migrations (schema + seeded roles/permissions), dev-only seed data kept separate from migrations
+- [x] RESTful CRUD for every resource, pagination/filter/sort/search, Zod validation, centralized error handling, consistent response envelopes, audit logging on every mutation, rate limiting on login + public lead creation
 - [x] Full lead management API: status pipeline, assignment, notes, follow-up dates, source/country/service filters, CSV export
-- [x] `docs/API_DOCUMENTATION.md` updated to the actual implemented endpoints
-- [x] Unit tests (16, Vitest) + live smoke test (49/49 checks) against a real `wrangler dev` instance with real D1/R2/KV
+- [x] **Phase 4** — Super Admin / Admin / Editor role model with configurable, per-role permissions (`PUT /api/roles/:id/permissions`); PBKDF2-600k password hashing; server-side session management (signed JWT + `tokenVersion` invalidation on password change/reset, 8h expiry); password reset workflow (Turnstile-verified request → one-time token → reset); account lockout (5 failed attempts/email → 15 min) on top of IP rate limiting; `HttpOnly` + `Secure` + `SameSite=Strict` session cookie; CSRF Origin check on authenticated mutations; Turnstile on login, lead creation, and password-reset requests; server-enforced `/admin` route protection (not just client-side); no default/baked-in admin password anywhere — `scripts/create-super-admin.mjs` documents real provisioning
+- [x] `docs/API_DOCUMENTATION.md` updated to the actual implemented endpoints, including the full auth/security surface
+- [x] Unit tests (31, Vitest) + live smoke test (88/88 checks) against a real `wrangler dev` instance with real D1/R2/KV, covering the full security surface above
 - [ ] Staging/production resources and secrets (deferred — not deploying yet)

@@ -1,12 +1,28 @@
 #!/usr/bin/env node
 // End-to-end smoke test against a running `wrangler dev` instance.
-// Exercises auth, RBAC, CRUD across the main resources, the lead pipeline,
-// media upload, SEO metadata, and validation/permission error paths.
+// Exercises auth, RBAC, session/CSRF/lockout security, CRUD across the
+// main resources, the lead pipeline, media upload, SEO metadata, and
+// validation/permission error paths.
 //
 // Usage: node scripts/smoke-test.mjs [baseUrl]
-// Expects the dev-seeded admin/editor users (seeds/dev-seed.sql) to exist.
+// Expects the dev-seeded super admin/admin/editor users (seeds/dev-seed.sql).
+//
+// Different logical "actors" below use distinct fake CF-Connecting-IP
+// values (TEST-NET-3 range, 203.0.113.0/24 — never a real address) purely
+// so this single script run doesn't exhaust one shared IP's login rate
+// limit across unrelated scenarios, the same way distinct real users
+// naturally would. This only works because local `wrangler dev` doesn't
+// strip a client-supplied cf-connecting-ip the way Cloudflare's real edge
+// always does in production — the header can't be spoofed for real once
+// deployed, so this is a test convenience, not a gap being relied on.
 
 const base = process.argv[2] ?? 'http://127.0.0.1:8787';
+const SITE_ORIGIN = 'http://localhost:4321'; // must match wrangler.jsonc's default-env SITE_URL
+
+// Varies per run so re-running this script within the same IP-rate-limit
+// window (60s) doesn't inherit a previous run's counters on these fake IPs.
+const RUN_OFFSET = Date.now() % 150;
+const fakeIp = (n) => `203.0.113.${n + RUN_OFFSET}`;
 
 let passed = 0;
 let failed = 0;
@@ -23,19 +39,25 @@ function check(label, condition, extra) {
   }
 }
 
-function makeClient() {
+function makeClient(clientIp) {
   let cookie = '';
-  return async function request(method, path, body) {
-    const headers = { 'content-type': 'application/json' };
+  let lastSetCookieRaw = '';
+  const request = async function (method, path, body, extraHeaders) {
+    const headers = { 'content-type': 'application/json', ...extraHeaders };
+    if (clientIp) headers['cf-connecting-ip'] = clientIp;
     if (cookie) headers.cookie = cookie;
     const isFormData = body instanceof FormData;
+    if (isFormData) delete headers['content-type'];
     const res = await fetch(`${base}${path}`, {
       method,
-      headers: isFormData ? (cookie ? { cookie } : {}) : headers,
+      headers,
       body: body === undefined ? undefined : isFormData ? body : JSON.stringify(body),
     });
     const setCookie = res.headers.get('set-cookie');
-    if (setCookie) cookie = setCookie.split(';')[0];
+    if (setCookie) {
+      lastSetCookieRaw = setCookie;
+      cookie = setCookie.split(';')[0];
+    }
     const text = await res.text();
     let json;
     try {
@@ -45,6 +67,11 @@ function makeClient() {
     }
     return { status: res.status, body: json, raw: text };
   };
+  request.lastSetCookieRaw = () => lastSetCookieRaw;
+  request.clearCookie = () => {
+    cookie = '';
+  };
+  return request;
 }
 
 async function main() {
@@ -68,50 +95,208 @@ async function main() {
     check('unauthenticated GET /api/leads is 401', res.status === 401, res.status);
   }
 
-  // --- auth: login ---
+  // --- account lockout (own IP + a throwaway email so it can't collide with real accounts) ---
+  console.log('\nauth: account lockout');
+  {
+    const attacker = makeClient(fakeIp(10));
+    // Unique per run — lockout state persists for 15 minutes in KV, so a
+    // fixed email would make this test non-repeatable within that window.
+    const target = {
+      email: `lockout-test-${Date.now()}@example.test`,
+      password: 'wrong',
+      turnstileToken: 't',
+    };
+    let lastStatus;
+    for (let i = 0; i < 5; i++) {
+      const res = await attacker('POST', '/api/auth/login', target);
+      lastStatus = res.status;
+    }
+    check('5th failed attempt is still a normal 401', lastStatus === 401, lastStatus);
+    const locked = await attacker('POST', '/api/auth/login', target);
+    check(
+      '6th attempt is 423 ACCOUNT_LOCKED',
+      locked.status === 423 && locked.body?.error?.code === 'ACCOUNT_LOCKED',
+      JSON.stringify(locked.body),
+    );
+  }
+
+  // --- login validation ---
+  console.log('\nauth: login validation');
+  {
+    const anon = makeClient(fakeIp(11));
+    const missingTurnstile = await anon('POST', '/api/auth/login', {
+      email: 'dev-admin@hossaingrowth.local',
+      password: 'DevAdmin!2026Local',
+    });
+    check(
+      'login without turnstileToken is 400',
+      missingTurnstile.status === 400,
+      missingTurnstile.status,
+    );
+  }
+
+  // --- auth: login (admin, super admin, editor — each its own IP) ---
   console.log('\nauth: login');
-  const admin = makeClient();
+  const admin = makeClient(fakeIp(20));
+  const superAdmin = makeClient(fakeIp(21));
+  const editor = makeClient(fakeIp(22));
   {
     const bad = await admin('POST', '/api/auth/login', {
       email: 'dev-admin@hossaingrowth.local',
       password: 'wrong-password',
+      turnstileToken: 't',
     });
     check('login with wrong password is 401', bad.status === 401, bad.status);
 
     const good = await admin('POST', '/api/auth/login', {
       email: 'dev-admin@hossaingrowth.local',
       password: 'DevAdmin!2026Local',
+      turnstileToken: 't',
     });
     check('login with correct password is 200', good.status === 200, JSON.stringify(good.body));
     check('login response includes admin role', good.body?.data?.role === 'admin');
 
+    const setCookie = admin.lastSetCookieRaw();
+    check('session cookie is HttpOnly', /HttpOnly/i.test(setCookie), setCookie);
+    check('session cookie is SameSite=Strict', /SameSite=Strict/i.test(setCookie), setCookie);
+
     const me = await admin('GET', '/api/auth/me');
     check('GET /api/auth/me is 200 after login', me.status === 200);
     check(
-      'me.permissions includes users.manage',
-      me.body?.data?.permissions?.includes('users.manage'),
+      'admin does NOT have users.manage (narrowed role)',
+      !me.body?.data?.permissions?.includes('users.manage'),
+    );
+
+    const superLogin = await superAdmin('POST', '/api/auth/login', {
+      email: 'dev-superadmin@hossaingrowth.local',
+      password: 'DevAdmin!2026Local',
+      turnstileToken: 't',
+    });
+    check('super admin login is 200', superLogin.status === 200, JSON.stringify(superLogin.body));
+    check('super admin role is super_admin', superLogin.body?.data?.role === 'super_admin');
+    check(
+      'super admin has users.manage',
+      superLogin.body?.data?.permissions?.includes('users.manage'),
+    );
+    check(
+      'super admin has roles.manage',
+      superLogin.body?.data?.permissions?.includes('roles.manage'),
+    );
+
+    const editorLogin = await editor('POST', '/api/auth/login', {
+      email: 'dev-editor@hossaingrowth.local',
+      password: 'DevAdmin!2026Local',
+      turnstileToken: 't',
+    });
+    check('editor login is 200', editorLogin.status === 200);
+    check(
+      'editor does NOT have settings.write',
+      !editorLogin.body?.data?.permissions?.includes('settings.write'),
     );
   }
 
-  // --- RBAC: viewer cannot write ---
+  // --- RBAC: role boundaries ---
   console.log('\nRBAC: role boundaries');
-  const editor = makeClient();
   {
-    const login = await editor('POST', '/api/auth/login', {
-      email: 'dev-editor@hossaingrowth.local',
-      password: 'DevAdmin!2026Local',
-    });
-    check('editor login is 200', login.status === 200);
+    const adminDenied = await admin('GET', '/api/admin-users');
+    check(
+      'admin (narrowed) is forbidden from /api/admin-users',
+      adminDenied.status === 403,
+      adminDenied.status,
+    );
 
-    const deniedUsersManage = await editor('GET', '/api/admin-users');
+    const editorDenied = await editor('GET', '/api/admin-users');
     check(
       'editor is forbidden from /api/admin-users',
-      deniedUsersManage.status === 403,
-      deniedUsersManage.status,
+      editorDenied.status === 403,
+      editorDenied.status,
+    );
+
+    const superAllowed = await superAdmin('GET', '/api/admin-users');
+    check(
+      'super admin can access /api/admin-users',
+      superAllowed.status === 200,
+      superAllowed.status,
     );
 
     const allowedServices = await editor('GET', '/api/services');
     check('editor can read /api/services', allowedServices.status === 200, allowedServices.status);
+  }
+
+  // --- roles: configurable permissions ---
+  console.log('\nroles: configurable permissions');
+  let customRoleId;
+  {
+    const rolesList = await superAdmin('GET', '/api/roles');
+    check('GET /api/roles is 200', rolesList.status === 200);
+    const allPermissions = await superAdmin('GET', '/api/permissions');
+    const adminRole = rolesList.body?.data?.find((r) => r.key === 'admin');
+    const editorRole = rolesList.body?.data?.find((r) => r.key === 'editor');
+    const superRole = rolesList.body?.data?.find((r) => r.key === 'super_admin');
+    check(
+      'admin role lacks users.manage/roles.manage',
+      !adminRole?.permissions?.includes('users.manage') &&
+        !adminRole?.permissions?.includes('roles.manage'),
+    );
+    check('editor role lacks settings.write', !editorRole?.permissions?.includes('settings.write'));
+    check(
+      'super_admin role has every permission',
+      superRole?.permissions?.length === allPermissions.body?.data?.length,
+      `${superRole?.permissions?.length} vs ${allPermissions.body?.data?.length}`,
+    );
+    check('viewer role no longer exists', !rolesList.body?.data?.some((r) => r.key === 'viewer'));
+
+    const created = await superAdmin('POST', '/api/roles', {
+      key: `smoke_role_${Date.now()}`,
+      name: 'Smoke Test Role',
+      description: 'Temporary role created by the smoke test.',
+    });
+    check('create custom role is 201', created.status === 201, JSON.stringify(created.body));
+    customRoleId = created.body?.data?.id;
+
+    if (customRoleId) {
+      const setPerms = await superAdmin('PUT', `/api/roles/${customRoleId}/permissions`, {
+        permissionKeys: ['leads.read', 'blog.read'],
+      });
+      check('set role permissions is 200', setPerms.status === 200, JSON.stringify(setPerms.body));
+      check(
+        'role now has exactly the configured permissions',
+        setPerms.body?.data?.permissions?.sort().join(',') === 'blog.read,leads.read',
+      );
+
+      const badPerms = await superAdmin('PUT', `/api/roles/${customRoleId}/permissions`, {
+        permissionKeys: ['not.a.real.permission'],
+      });
+      check('setting an unknown permission key is 400', badPerms.status === 400, badPerms.status);
+    }
+
+    const editorCannotManageRoles = await editor('GET', '/api/roles');
+    check(
+      'editor is forbidden from /api/roles',
+      editorCannotManageRoles.status === 403,
+      editorCannotManageRoles.status,
+    );
+  }
+
+  // --- CSRF: Origin check on authenticated mutating requests ---
+  console.log('\nCSRF protection');
+  {
+    const forged = await admin(
+      'PATCH',
+      `/api/services/does-not-matter`,
+      { title: 'x' },
+      { origin: 'https://evil.example' },
+    );
+    check(
+      'mismatched Origin on authenticated mutation is 403 CSRF_REJECTED',
+      forged.status === 403 && forged.body?.error?.code === 'CSRF_REJECTED',
+      JSON.stringify(forged.body),
+    );
+
+    const legit = await admin('GET', `/api/services?pageSize=1`, undefined, {
+      origin: SITE_ORIGIN,
+    });
+    check('matching Origin is unaffected', legit.status === 200, legit.status);
   }
 
   // --- validation errors ---
@@ -228,7 +413,6 @@ async function main() {
   {
     const form = new FormData();
     const blob = new Blob(['smoke-test-file-contents'], { type: 'text/plain' });
-    // text/plain is not in the allow-list — expect rejection, then retry with an allowed type.
     form.set('file', blob, 'smoke.txt');
     const rejected = await admin('POST', '/api/media', form);
     check('upload of disallowed mime type is 400', rejected.status === 400, rejected.status);
@@ -284,7 +468,7 @@ async function main() {
   console.log('\nleads pipeline');
   let leadId;
   {
-    const anon = makeClient();
+    const anon = makeClient(fakeIp(30));
     const created = await anon('POST', '/api/leads', {
       name: 'Smoke Test Lead',
       email: 'smoke-lead@example.test',
@@ -338,12 +522,144 @@ async function main() {
   // --- activity logs captured the above actions ---
   console.log('\nactivity logs');
   {
-    const res = await admin('GET', '/api/activity-logs?entityType=lead');
+    const res = await superAdmin('GET', '/api/activity-logs?entityType=lead');
     check('activity log list is 200', res.status === 200);
     check(
       'activity log recorded lead.created',
       res.body?.data?.some((l) => l.action === 'lead.created'),
     );
+  }
+
+  // --- admin UI route protection (server-side, not just frontend) ---
+  console.log('\nadmin route protection');
+  {
+    const noRedirect = await fetch(`${base}/admin`, { redirect: 'manual' });
+    check(
+      'GET /admin with no session is a redirect',
+      noRedirect.status >= 300 && noRedirect.status < 400,
+      noRedirect.status,
+    );
+    check(
+      'redirect target is /admin/login',
+      (noRedirect.headers.get('location') ?? '').startsWith('/admin/login'),
+      noRedirect.headers.get('location'),
+    );
+
+    const loginPage = await fetch(`${base}/admin/login`);
+    check('GET /admin/login is public (200)', loginPage.status === 200, loginPage.status);
+  }
+
+  // --- change password invalidates the current session ---
+  console.log('\nchange password invalidates session');
+  {
+    const changed = await editor('POST', '/api/auth/change-password', {
+      currentPassword: 'DevAdmin!2026Local',
+      newPassword: 'NewEditorPassword!2026',
+    });
+    check('change password is 200', changed.status === 200, JSON.stringify(changed.body));
+
+    const meAfter = await editor('GET', '/api/auth/me');
+    check(
+      'old session is invalid immediately after password change',
+      meAfter.status === 401,
+      meAfter.status,
+    );
+
+    const reLogin = await editor('POST', '/api/auth/login', {
+      email: 'dev-editor@hossaingrowth.local',
+      password: 'NewEditorPassword!2026',
+      turnstileToken: 't',
+    });
+    check('can log in with the new password', reLogin.status === 200, JSON.stringify(reLogin.body));
+
+    // Restore the original dev-seed password so repeated smoke-test runs keep working.
+    const restore = await editor('POST', '/api/auth/change-password', {
+      currentPassword: 'NewEditorPassword!2026',
+      newPassword: 'DevAdmin!2026Local',
+    });
+    check('password restored for next run', restore.status === 200, JSON.stringify(restore.body));
+  }
+
+  // --- password reset workflow ---
+  console.log('\npassword reset workflow');
+  {
+    const resetClient = makeClient(fakeIp(40));
+    const requested = await resetClient('POST', '/api/auth/request-password-reset', {
+      email: 'dev-editor@hossaingrowth.local',
+      turnstileToken: 't',
+    });
+    check(
+      'request password reset is 200',
+      requested.status === 200,
+      JSON.stringify(requested.body),
+    );
+    const devToken = requested.body?.data?.devOnlyResetToken;
+    check(
+      'dev environment returns a reset token for testing',
+      typeof devToken === 'string' && devToken.length > 0,
+    );
+
+    const unknownEmail = await resetClient('POST', '/api/auth/request-password-reset', {
+      email: 'no-such-account@example.test',
+      turnstileToken: 't',
+    });
+    check(
+      'requesting reset for an unknown email is still 200 (no account enumeration)',
+      unknownEmail.status === 200 &&
+        unknownEmail.body?.data?.message === requested.body?.data?.message,
+    );
+
+    if (devToken) {
+      const badToken = await resetClient('POST', '/api/auth/reset-password', {
+        token: 'not-a-real-token',
+        newPassword: 'SomeNewPassword!2026',
+      });
+      check('resetting with a bad token is 400', badToken.status === 400, badToken.status);
+
+      const reset = await resetClient('POST', '/api/auth/reset-password', {
+        token: devToken,
+        newPassword: 'ResetFlowPassword!2026',
+      });
+      check(
+        'reset-password with a valid token is 200',
+        reset.status === 200,
+        JSON.stringify(reset.body),
+      );
+
+      const reuse = await resetClient('POST', '/api/auth/reset-password', {
+        token: devToken,
+        newPassword: 'AnotherPassword!2026',
+      });
+      check('the same reset token cannot be used twice', reuse.status === 400, reuse.status);
+
+      const loginOldPassword = await resetClient('POST', '/api/auth/login', {
+        email: 'dev-editor@hossaingrowth.local',
+        password: 'DevAdmin!2026Local',
+        turnstileToken: 't',
+      });
+      check(
+        'old password no longer works after reset',
+        loginOldPassword.status === 401,
+        loginOldPassword.status,
+      );
+
+      const loginNewPassword = await resetClient('POST', '/api/auth/login', {
+        email: 'dev-editor@hossaingrowth.local',
+        password: 'ResetFlowPassword!2026',
+        turnstileToken: 't',
+      });
+      check(
+        'new password works after reset',
+        loginNewPassword.status === 200,
+        JSON.stringify(loginNewPassword.body),
+      );
+
+      // Restore the dev-seed password for repeatable runs.
+      await resetClient('POST', '/api/auth/change-password', {
+        currentPassword: 'ResetFlowPassword!2026',
+        newPassword: 'DevAdmin!2026Local',
+      });
+    }
   }
 
   // --- cleanup created resources ---

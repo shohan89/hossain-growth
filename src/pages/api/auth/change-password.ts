@@ -1,5 +1,5 @@
 import type { APIRoute } from 'astro';
-import { eq } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/d1';
 import { env } from 'cloudflare:workers';
 import * as schema from '../../../lib/db/schema';
@@ -7,6 +7,8 @@ import { adminUsers } from '../../../lib/db/schema';
 import { changePasswordSchema } from '../../../lib/validation/auth';
 import { hashPassword, verifyPassword } from '../../../lib/auth/password';
 import { requireSession } from '../../../lib/auth/rbac';
+import { SESSION_COOKIE_NAME } from '../../../lib/auth/session';
+import { setCachedTokenVersion } from '../../../lib/auth/token-version';
 import { jsonOk, withErrorHandling } from '../../../lib/http/response';
 import { ApiError, NotFoundError } from '../../../lib/http/errors';
 import { logActivity } from '../../../lib/audit';
@@ -26,7 +28,16 @@ export const POST: APIRoute = withErrorHandling(async (ctx) => {
   if (!valid) throw new ApiError(401, 'INVALID_CREDENTIALS', 'Current password is incorrect.');
 
   const passwordHash = await hashPassword(body.newPassword);
-  await db.update(adminUsers).set({ passwordHash }).where(eq(adminUsers.id, user.id));
+  const [updated] = await db
+    .update(adminUsers)
+    .set({ passwordHash, tokenVersion: sql`${adminUsers.tokenVersion} + 1` })
+    .where(eq(adminUsers.id, user.id))
+    .returning();
+
+  // Invalidates this session and every other outstanding session for this
+  // user immediately — a changed password should require logging in again.
+  await setCachedTokenVersion(env.SESSIONS, user.id, updated.tokenVersion);
+  ctx.cookies.delete(SESSION_COOKIE_NAME, { path: '/' });
 
   await logActivity(db, {
     userId: user.id,
@@ -36,5 +47,5 @@ export const POST: APIRoute = withErrorHandling(async (ctx) => {
     ipAddress: getClientIp(ctx.request),
   });
 
-  return jsonOk({ changed: true });
+  return jsonOk({ changed: true, message: 'Password changed. Please log in again.' });
 });

@@ -8,6 +8,7 @@ const session: SessionPayload = {
   email: 'test@example.test',
   roleKey: 'editor',
   permissions: ['leads.read', 'leads.write'],
+  tokenVersion: 0,
 };
 
 describe('requireSession', () => {

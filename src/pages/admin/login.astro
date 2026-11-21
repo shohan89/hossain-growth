@@ -1,0 +1,19 @@
+---
+import { env } from 'cloudflare:workers';
+import PublicLayout from '../../layouts/PublicLayout.astro';
+import LoginForm from '../../components/LoginForm.tsx';
+
+// If already logged in, skip the login page entirely.
+if (Astro.locals.session) {
+  return Astro.redirect('/admin');
+}
+
+const next = Astro.url.searchParams.get('next') ?? '/admin';
+---
+
+<PublicLayout title="Admin Login">
+  <main class="flex min-h-screen flex-col items-center justify-center gap-6 px-6">
+    <h1 class="text-2xl font-bold">Hossain Growth Admin</h1>
+    <LoginForm client:load turnstileSiteKey={env.TURNSTILE_SITE_KEY} next={next} />
+  </main>
+</PublicLayout>

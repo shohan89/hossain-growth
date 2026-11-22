@@ -84,17 +84,27 @@
     "production": {
       "name": "hossain-growth-production",
       "vars": {
-        "SITE_URL": "https://hossaingrowth.com",
+        // Real workers.dev URL, confirmed from first deploy output
+        // (no custom domain yet — launching on workers.dev per explicit
+        // instruction). See docs/DEPLOYMENT_GUIDE.md §5.
+        "SITE_URL": "https://hossain-growth-production.maffin-killer007.workers.dev",
         "ENVIRONMENT": "production",
-        "EMAIL_PROVIDER": "resend",
+        // No real Resend API key available yet — "none" is the documented
+        // safe default (Phase 7 design: lead creation never depends on
+        // this). Switch to "resend" + `wrangler secret put EMAIL_API_KEY`
+        // once a real key exists; no other change needed.
+        "EMAIL_PROVIDER": "none",
         "EMAIL_FROM": "no-reply@hossaingrowth.com",
-        "NOTIFICATION_EMAIL_TO": "REPLACE_WITH_PRODUCTION_NOTIFICATION_EMAIL",
+        "NOTIFICATION_EMAIL_TO": "",
+        // Real managed widget, created against the real workers.dev
+        // hostname after first deploy. See docs/DEPLOYMENT_GUIDE.md §4.2.
+        "TURNSTILE_SITE_KEY": "0x4AAAAAAGM5ZrD0lQQhJ0Qe",
       },
       "d1_databases": [
         {
           "binding": "DB",
           "database_name": "hossain-growth-production",
-          "database_id": "REPLACE_WITH_PRODUCTION_D1_ID",
+          "database_id": "a04eb744-fdfd-4163-a498-0e5e85527ddc",
         },
       ],
       "r2_buckets": [
@@ -104,8 +114,8 @@
         },
       ],
       "kv_namespaces": [
-        { "binding": "SESSIONS", "id": "REPLACE_WITH_PRODUCTION_SESSIONS_KV_ID" },
-        { "binding": "CACHE", "id": "REPLACE_WITH_PRODUCTION_CACHE_KV_ID" },
+        { "binding": "SESSIONS", "id": "2265c8f3a8834ba59ca5d21152052186" },
+        { "binding": "CACHE", "id": "5a98d937e37b4cc2b3dcd0362af2baeb" },
       ],
     },
   },

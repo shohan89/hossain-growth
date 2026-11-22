@@ -74,6 +74,25 @@ export const onRequest = defineMiddleware(async (context, next) => {
 
   const response = await next();
 
+  // Baseline security headers on every response (public and admin
+  // alike). Deliberately conservative: a strict Content-Security-Policy
+  // is NOT set here — this app relies on several inline <script> tags
+  // (JSON-LD structured data, the theme/nav toggles) without nonces, so
+  // a strict CSP would need that refactor first rather than being
+  // bolted on right before a production deploy. See
+  // docs/MAINTENANCE_GUIDE.md for the planned follow-up. These four
+  // headers are safe regardless — none of them can break anything this
+  // app does.
+  try {
+    response.headers.set('x-content-type-options', 'nosniff');
+    response.headers.set('x-frame-options', 'DENY');
+    response.headers.set('referrer-policy', 'strict-origin-when-cross-origin');
+    response.headers.set('permissions-policy', 'camera=(), microphone=(), geolocation=()');
+  } catch {
+    // Some response objects have immutable headers — never worth
+    // failing the request over a missing header.
+  }
+
   // Light edge/browser caching for public pages only — admin pages are
   // session-specific and already noindexed, so they're excluded. Content
   // is CMS-driven and can change at any time, so this intentionally

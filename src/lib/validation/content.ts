@@ -33,6 +33,7 @@ export const createPortfolioProjectSchema = createInsertSchema(portfolioProjects
   title: z.string().min(1).max(200),
   serviceIds: z.array(z.string()).optional(),
   resultsMetrics: z.record(z.string(), z.string()).optional(),
+  publishedAt: z.coerce.date().nullable().optional(),
 })
   .omit({ id: true, createdAt: true, updatedAt: true, createdBy: true })
   .extend({ imageIds: z.array(z.string()).optional() });
@@ -41,6 +42,11 @@ export const updatePortfolioProjectSchema = createPortfolioProjectSchema.partial
 export const createCaseStudySchema = createInsertSchema(caseStudies, {
   slug,
   title: z.string().min(1).max(200),
+  // Overridden so a plain ISO string over JSON (e.g. from the admin
+  // dashboard) is accepted — drizzle-zod's default mapping for a
+  // timestamp-mode column requires an actual Date instance, which JSON
+  // can't represent.
+  publishedAt: z.coerce.date().nullable().optional(),
 }).omit({ id: true, createdAt: true, updatedAt: true, createdBy: true });
 export const updateCaseStudySchema = createCaseStudySchema.partial();
 
@@ -56,6 +62,8 @@ export const createBlogPostSchema = createInsertSchema(blogPosts, {
   slug,
   title: z.string().min(1).max(300),
   content: z.string().min(1),
+  scheduledAt: z.coerce.date().nullable().optional(),
+  publishedAt: z.coerce.date().nullable().optional(),
 })
   .omit({ id: true, createdAt: true, updatedAt: true, authorId: true })
   .extend({ tagIds: z.array(z.string()).optional() });

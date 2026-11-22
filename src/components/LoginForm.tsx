@@ -82,7 +82,11 @@ export default function LoginForm({ turnstileSiteKey, next }: Props) {
         />
       </div>
       <div className="cf-turnstile" data-sitekey={turnstileSiteKey} />
-      {error && <p className="text-sm text-red-600">{error}</p>}
+      {error && (
+        <p role="alert" className="text-sm text-red-600">
+          {error}
+        </p>
+      )}
       <button
         type="submit"
         disabled={submitting}

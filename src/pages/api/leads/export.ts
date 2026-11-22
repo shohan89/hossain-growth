@@ -19,6 +19,7 @@ const CSV_COLUMNS = [
   'phone',
   'company',
   'country',
+  'budget',
   'source',
   'serviceInterest',
   'status',
@@ -43,6 +44,8 @@ export const GET: APIRoute = withErrorHandling(async (ctx) => {
   if (status) clauses.push(eq(leads.status, status as (typeof LEAD_STATUSES)[number]));
   const country = ctx.url.searchParams.get('country');
   if (country) clauses.push(eq(leads.country, country));
+  const budget = ctx.url.searchParams.get('budget');
+  if (budget) clauses.push(eq(leads.budget, budget));
   const source = ctx.url.searchParams.get('source');
   if (source) clauses.push(eq(leads.source, source));
   const search = ctx.url.searchParams.get('search');

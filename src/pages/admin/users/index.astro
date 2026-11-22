@@ -1,0 +1,13 @@
+---
+import AdminLayout from '../../../layouts/AdminLayout.astro';
+import UserManagement from '../../../components/admin/modules/UserManagement.tsx';
+import { PERMISSIONS } from '../../../lib/auth/permissions';
+import { hasPermission } from '../../../lib/auth/rbac';
+
+const session = Astro.locals.session!;
+if (!hasPermission(session, PERMISSIONS.USERS_MANAGE)) return Astro.redirect('/admin');
+---
+
+<AdminLayout title="User Management">
+  <UserManagement client:load canManage={true} />
+</AdminLayout>

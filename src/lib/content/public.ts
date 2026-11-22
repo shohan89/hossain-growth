@@ -13,7 +13,41 @@ import {
   siteSettings,
   navigationItems,
   adminUsers,
+  mediaAssets,
+  seoMetadata,
 } from '../db/schema';
+
+export interface PublicMediaAsset {
+  id: string;
+  mimeType: string;
+  width: number | null;
+  height: number | null;
+  altText: string | null;
+}
+
+/** Batch-resolves media assets by id — used to render real `<img>` tags
+ * (with real alt text and width/height, to avoid layout shift) for a page
+ * or list without an N+1 query per item. */
+export async function getMediaAssetsMap(
+  db: AppDb,
+  ids: (string | null | undefined)[],
+): Promise<Map<string, PublicMediaAsset>> {
+  const uniqueIds = [...new Set(ids.filter((id): id is string => Boolean(id)))];
+  if (uniqueIds.length === 0) return new Map();
+
+  const rows = await db
+    .select({
+      id: mediaAssets.id,
+      mimeType: mediaAssets.mimeType,
+      width: mediaAssets.width,
+      height: mediaAssets.height,
+      altText: mediaAssets.altText,
+    })
+    .from(mediaAssets)
+    .where(inArray(mediaAssets.id, uniqueIds));
+
+  return new Map(rows.map((row) => [row.id, row]));
+}
 
 export async function getPublishedServices(db: AppDb) {
   return db
@@ -114,6 +148,7 @@ export async function getPublishedBlogPosts(
       slug: blogPosts.slug,
       title: blogPosts.title,
       excerpt: blogPosts.excerpt,
+      featuredImageId: blogPosts.featuredImageId,
       publishedAt: blogPosts.publishedAt,
       categoryId: blogPosts.categoryId,
       categoryName: blogCategories.name,
@@ -135,6 +170,7 @@ export async function getBlogPostBySlug(db: AppDb, slug: string) {
       title: blogPosts.title,
       excerpt: blogPosts.excerpt,
       content: blogPosts.content,
+      featuredImageId: blogPosts.featuredImageId,
       publishedAt: blogPosts.publishedAt,
       updatedAt: blogPosts.updatedAt,
       categoryId: blogPosts.categoryId,
@@ -191,6 +227,19 @@ export async function getPublishedTestimonials(db: AppDb, limit?: number) {
     .where(eq(testimonials.isPublished, true))
     .orderBy(asc(testimonials.orderIndex));
   return limit ? query.limit(limit) : query;
+}
+
+export type SeoEntityType = 'page' | 'blog_post' | 'portfolio_project' | 'case_study' | 'service';
+
+/** Admin-set SEO overrides (meta title/description/canonical/OG image/
+ * noindex) for one entity — applied on top of the page's own computed
+ * defaults, never replacing them when unset. */
+export async function getSeoOverride(db: AppDb, entityType: SeoEntityType, entityId: string) {
+  const [row] = await db
+    .select()
+    .from(seoMetadata)
+    .where(and(eq(seoMetadata.entityType, entityType), eq(seoMetadata.entityId, entityId)));
+  return row ?? null;
 }
 
 export async function getSiteSetting<T = unknown>(db: AppDb, key: string): Promise<T | null> {

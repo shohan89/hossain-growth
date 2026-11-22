@@ -4,11 +4,16 @@ import SiteLayout from '../../layouts/SiteLayout.astro';
 import Container from '../../components/ui/Container.astro';
 import Breadcrumbs from '../../components/ui/Breadcrumbs.astro';
 import FinalCta from '../../components/home/FinalCta.astro';
+import MediaImage from '../../components/ui/MediaImage.astro';
 import { getDb } from '../../lib/db/client';
-import { getPublishedPortfolioProjects } from '../../lib/content/public';
+import { getPublishedPortfolioProjects, getMediaAssetsMap } from '../../lib/content/public';
 
 const db = getDb(env.DB);
 const projects = await getPublishedPortfolioProjects(db);
+const mediaMap = await getMediaAssetsMap(
+  db,
+  projects.map((p) => p.featuredImageId),
+);
 ---
 
 <SiteLayout
@@ -39,7 +44,11 @@ const projects = await getPublishedPortfolioProjects(db);
               href={`/portfolio/${project.slug}`}
               class="group flex flex-col gap-4 rounded-3xl border border-ink-900/8 bg-bone-100 p-8 transition-colors hover:border-lime-500/60"
             >
-              <div class="h-40 rounded-2xl bg-gradient-to-br from-ink-900 to-ink-700" />
+              <MediaImage
+                asset={project.featuredImageId ? mediaMap.get(project.featuredImageId) : null}
+                alt={project.title}
+                class="h-40 w-full rounded-2xl"
+              />
               <div class="flex flex-col gap-1">
                 {project.clientName && (
                   <span class="text-xs font-semibold uppercase tracking-wide text-lime-600">

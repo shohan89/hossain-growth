@@ -19,7 +19,9 @@ import {
   getPublishedCaseStudies,
   getPublishedBlogPosts,
   getPublishedTestimonials,
+  getMediaAssetsMap,
 } from '../lib/content/public';
+import { professionalServiceSchema } from '../lib/seo';
 
 const db = getDb(env.DB);
 const [services, portfolioProjects, caseStudies, blogPosts, testimonials] = await Promise.all([
@@ -29,18 +31,27 @@ const [services, portfolioProjects, caseStudies, blogPosts, testimonials] = awai
   getPublishedBlogPosts(db, { limit: 3 }),
   getPublishedTestimonials(db, 3),
 ]);
+
+const mediaMap = await getMediaAssetsMap(db, [
+  ...portfolioProjects.map((p) => p.featuredImageId),
+  ...blogPosts.map((p) => p.featuredImageId),
+  ...testimonials.map((t) => t.avatarMediaId),
+]);
 ---
 
-<SiteLayout title="Hossain Growth">
+<SiteLayout
+  title="Hossain Growth"
+  structuredData={professionalServiceSchema({ origin: Astro.url.origin })}
+>
   <Hero />
   <TrustIndicators />
   <ServicesOverview services={services} />
   <WhyChooseUs />
-  <FeaturedPortfolio projects={portfolioProjects} />
+  <FeaturedPortfolio projects={portfolioProjects} mediaMap={mediaMap} />
   <CaseStudyResults caseStudies={caseStudies} />
   <GrowthProcess />
   <IndustriesStrip />
-  <Testimonials testimonials={testimonials} />
-  <Insights posts={blogPosts} />
+  <Testimonials testimonials={testimonials} mediaMap={mediaMap} />
+  <Insights posts={blogPosts} mediaMap={mediaMap} />
   <FinalCta />
 </SiteLayout>

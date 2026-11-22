@@ -1,0 +1,23 @@
+---
+import AdminLayout from '../../../layouts/AdminLayout.astro';
+import LeadsManager from '../../../components/admin/modules/LeadsManager.tsx';
+import { PERMISSIONS } from '../../../lib/auth/permissions';
+import { hasPermission } from '../../../lib/auth/rbac';
+
+const session = Astro.locals.session!;
+if (!hasPermission(session, PERMISSIONS.LEADS_READ)) return Astro.redirect('/admin');
+const canWrite = hasPermission(session, PERMISSIONS.LEADS_WRITE);
+const canAssign = hasPermission(session, PERMISSIONS.LEADS_ASSIGN);
+const canDelete = hasPermission(session, PERMISSIONS.LEADS_DELETE);
+const canExport = hasPermission(session, PERMISSIONS.LEADS_EXPORT);
+---
+
+<AdminLayout title="Leads / CRM">
+  <LeadsManager
+    client:load
+    canWrite={canWrite}
+    canAssign={canAssign}
+    canDelete={canDelete}
+    canExport={canExport}
+  />
+</AdminLayout>

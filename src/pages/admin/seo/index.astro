@@ -1,0 +1,13 @@
+---
+import AdminLayout from '../../../layouts/AdminLayout.astro';
+import SeoManager from '../../../components/admin/modules/SeoManager.tsx';
+import { PERMISSIONS } from '../../../lib/auth/permissions';
+import { hasPermission } from '../../../lib/auth/rbac';
+
+const session = Astro.locals.session!;
+if (!hasPermission(session, PERMISSIONS.SEO_WRITE)) return Astro.redirect('/admin');
+---
+
+<AdminLayout title="SEO Manager">
+  <SeoManager client:load canWrite={true} />
+</AdminLayout>

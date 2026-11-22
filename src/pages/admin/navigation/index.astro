@@ -1,0 +1,19 @@
+---
+import AdminLayout from '../../../layouts/AdminLayout.astro';
+import NavigationManager from '../../../components/admin/modules/NavigationManager.tsx';
+import { PERMISSIONS } from '../../../lib/auth/permissions';
+import { hasPermission } from '../../../lib/auth/rbac';
+
+const session = Astro.locals.session!;
+if (!hasPermission(session, PERMISSIONS.NAVIGATION_WRITE)) return Astro.redirect('/admin');
+const canManageRedirects = hasPermission(session, PERMISSIONS.REDIRECTS_WRITE);
+---
+
+<AdminLayout title="Navigation">
+  <NavigationManager
+    client:load
+    canWrite={true}
+    canDelete={true}
+    canManageRedirects={canManageRedirects}
+  />
+</AdminLayout>

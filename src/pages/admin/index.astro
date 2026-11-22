@@ -1,13 +1,10 @@
 ---
 import AdminLayout from '../../layouts/AdminLayout.astro';
+import OverviewDashboard from '../../components/admin/OverviewDashboard.tsx';
 
 const session = Astro.locals.session!;
 ---
 
-<AdminLayout title="Dashboard">
-  <h1 class="text-xl font-semibold">Dashboard</h1>
-  <p class="mt-2 text-slate-600">
-    Signed in as <strong>{session.email}</strong> ({session.roleKey}).
-  </p>
-  <p class="mt-4 text-sm text-slate-500">Permissions: {session.permissions.join(', ')}</p>
+<AdminLayout title="Overview">
+  <OverviewDashboard client:load permissions={session.permissions} />
 </AdminLayout>

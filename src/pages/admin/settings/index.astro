@@ -1,0 +1,13 @@
+---
+import AdminLayout from '../../../layouts/AdminLayout.astro';
+import SiteSettingsManager from '../../../components/admin/modules/SiteSettingsManager.tsx';
+import { PERMISSIONS } from '../../../lib/auth/permissions';
+import { hasPermission } from '../../../lib/auth/rbac';
+
+const session = Astro.locals.session!;
+if (!hasPermission(session, PERMISSIONS.SETTINGS_WRITE)) return Astro.redirect('/admin');
+---
+
+<AdminLayout title="Site Settings">
+  <SiteSettingsManager client:load canWrite={true} />
+</AdminLayout>

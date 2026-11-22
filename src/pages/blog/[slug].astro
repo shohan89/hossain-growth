@@ -3,9 +3,15 @@ import { env } from 'cloudflare:workers';
 import SiteLayout from '../../layouts/SiteLayout.astro';
 import Container from '../../components/ui/Container.astro';
 import Breadcrumbs from '../../components/ui/Breadcrumbs.astro';
+import MediaImage from '../../components/ui/MediaImage.astro';
 import { getDb } from '../../lib/db/client';
-import { getBlogPostBySlug, getRelatedBlogPosts } from '../../lib/content/public';
-import { articleSchema } from '../../lib/seo';
+import {
+  getBlogPostBySlug,
+  getRelatedBlogPosts,
+  getMediaAssetsMap,
+  getSeoOverride,
+} from '../../lib/content/public';
+import { articleSchema, resolveSeo } from '../../lib/seo';
 
 export const prerender = false;
 
@@ -17,18 +23,34 @@ if (!post) {
   return new Response('Article not found', { status: 404 });
 }
 
-const related = await getRelatedBlogPosts(db, post.id, post.categoryId);
-const canonicalUrl = new URL(`/blog/${post.slug}`, Astro.url.origin).toString();
+const [related, mediaMap, seoOverride] = await Promise.all([
+  getRelatedBlogPosts(db, post.id, post.categoryId),
+  getMediaAssetsMap(db, [post.featuredImageId]),
+  getSeoOverride(db, 'blog_post', post.id),
+]);
+const featuredImage = post.featuredImageId ? mediaMap.get(post.featuredImageId) : null;
+
+const seo = resolveSeo({
+  origin: Astro.url.origin,
+  defaultTitle: post.title,
+  defaultDescription: post.excerpt ?? undefined,
+  defaultPath: `/blog/${post.slug}`,
+  defaultImageId: post.featuredImageId,
+  override: seoOverride,
+});
 ---
 
 <SiteLayout
-  title={post.title}
-  description={post.excerpt ?? undefined}
-  canonicalUrl={canonicalUrl}
+  title={seo.title}
+  description={seo.description}
+  canonicalUrl={seo.canonicalUrl}
+  ogImageUrl={seo.ogImageUrl}
+  noindex={seo.noindex}
   structuredData={articleSchema({
     headline: post.title,
     description: post.excerpt ?? undefined,
-    url: canonicalUrl,
+    url: seo.canonicalUrl,
+    imageUrl: seo.ogImageUrl,
     datePublished: post.publishedAt?.toISOString(),
     dateModified: post.updatedAt?.toISOString(),
     authorName: post.authorName ?? undefined,
@@ -69,6 +91,17 @@ const canonicalUrl = new URL(`/blog/${post.slug}`, Astro.url.origin).toString();
         </p>
       </Container>
     </header>
+
+    {featuredImage && (
+      <Container class="-mt-10 pb-4">
+        <MediaImage
+          asset={featuredImage}
+          alt={post.title}
+          class="h-64 w-full rounded-3xl sm:h-96"
+          loading="eager"
+        />
+      </Container>
+    )}
 
     <section class="py-20 lg:py-28">
       <Container class="prose-content text-ink-800">

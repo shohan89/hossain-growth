@@ -1,5 +1,9 @@
 ---
 import '../styles/global.css';
+import AdminIcon from '../components/admin/AdminIcon.astro';
+import ToastHost from '../components/admin/ui/ToastHost.tsx';
+import { PERMISSIONS } from '../lib/auth/permissions';
+import type { AdminIconName } from '../lib/admin/icons';
 
 interface Props {
   title: string;
@@ -14,6 +18,96 @@ if (!Astro.locals.session) {
 
 const { title } = Astro.props;
 const session = Astro.locals.session;
+const currentPath = Astro.url.pathname;
+
+interface NavItem {
+  href: string;
+  label: string;
+  icon: AdminIconName;
+  permission: string | null;
+}
+
+const NAV_ITEMS: NavItem[] = [
+  { href: '/admin', label: 'Overview', icon: 'grid', permission: null },
+  {
+    href: '/admin/services',
+    label: 'Services',
+    icon: 'layers',
+    permission: PERMISSIONS.SERVICES_READ,
+  },
+  {
+    href: '/admin/portfolio',
+    label: 'Portfolio',
+    icon: 'image',
+    permission: PERMISSIONS.PORTFOLIO_READ,
+  },
+  {
+    href: '/admin/case-studies',
+    label: 'Case Studies',
+    icon: 'filetext',
+    permission: PERMISSIONS.CASE_STUDIES_READ,
+  },
+  { href: '/admin/blog', label: 'Blog Posts', icon: 'edit', permission: PERMISSIONS.BLOG_READ },
+  {
+    href: '/admin/categories-tags',
+    label: 'Categories & Tags',
+    icon: 'tag',
+    permission: PERMISSIONS.BLOG_READ,
+  },
+  {
+    href: '/admin/testimonials',
+    label: 'Testimonials',
+    icon: 'quote',
+    permission: PERMISSIONS.TESTIMONIALS_READ,
+  },
+  { href: '/admin/leads', label: 'Leads / CRM', icon: 'users', permission: PERMISSIONS.LEADS_READ },
+  {
+    href: '/admin/media',
+    label: 'Media Library',
+    icon: 'folder',
+    permission: PERMISSIONS.MEDIA_READ,
+  },
+  {
+    href: '/admin/pages',
+    label: 'Website Pages',
+    icon: 'filetext',
+    permission: PERMISSIONS.PAGES_READ,
+  },
+  {
+    href: '/admin/navigation',
+    label: 'Navigation',
+    icon: 'menu',
+    permission: PERMISSIONS.NAVIGATION_WRITE,
+  },
+  { href: '/admin/seo', label: 'SEO Manager', icon: 'search', permission: PERMISSIONS.SEO_WRITE },
+  {
+    href: '/admin/settings',
+    label: 'Site Settings',
+    icon: 'settings',
+    permission: PERMISSIONS.SETTINGS_WRITE,
+  },
+  {
+    href: '/admin/users',
+    label: 'User Management',
+    icon: 'shield',
+    permission: PERMISSIONS.USERS_MANAGE,
+  },
+  {
+    href: '/admin/activity-logs',
+    label: 'Activity Logs',
+    icon: 'activity',
+    permission: PERMISSIONS.ACTIVITY_LOGS_READ,
+  },
+];
+
+const visibleNavItems = NAV_ITEMS.filter(
+  (item) => item.permission === null || session.permissions.includes(item.permission),
+);
+
+function isActive(href: string) {
+  if (href === '/admin') return currentPath === '/admin';
+  return currentPath === href || currentPath.startsWith(`${href}/`);
+}
 ---
 
 <!doctype html>
@@ -22,32 +116,164 @@ const session = Astro.locals.session;
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>{title} | Hossain Growth Admin</title>
+    <meta name="robots" content="noindex, nofollow" />
+    <script is:inline>
+      (function () {
+        const stored = localStorage.getItem('admin-theme');
+        const theme =
+          stored ?? (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+        if (theme === 'dark') document.documentElement.classList.add('dark');
+      })();
+    </script>
   </head>
-  <body class="min-h-screen bg-slate-50 text-slate-900">
-    <header class="flex items-center justify-between border-b border-slate-200 bg-white px-6 py-4">
-      <span class="font-semibold">Hossain Growth Admin</span>
-      <div class="flex items-center gap-4 text-sm text-slate-600">
-        <span>
-          {session.email} · {session.roleKey}
-        </span>
-        <form method="post" action="/api/auth/logout" id="logout-form">
-          <button type="submit" class="text-slate-500 underline">
-            Log out
-          </button>
-        </form>
+  <body class="min-h-screen bg-[var(--color-surface-muted)] text-[var(--color-text)]">
+    <a
+      href="#admin-main-content"
+      class="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-[100] focus:rounded-full focus:bg-lime-400 focus:px-4 focus:py-2 focus:text-sm focus:font-semibold focus:text-ink-950"
+    >
+      Skip to content
+    </a>
+    <div class="flex min-h-screen">
+      <!-- Desktop sidebar -->
+      <aside class="hidden w-64 shrink-0 flex-col border-r border-[var(--color-border)] bg-[var(--color-surface)] lg:flex">
+        <div class="flex h-16 items-center gap-2 border-b border-[var(--color-border)] px-5">
+          <span class="font-display text-base font-bold">Hossain Growth</span>
+        </div>
+        <nav class="flex flex-1 flex-col gap-1 overflow-y-auto p-3">
+          {visibleNavItems.map((item) => (
+            <a
+              href={item.href}
+              class={`flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
+                isActive(item.href)
+                  ? 'bg-ink-900 text-bone-50'
+                  : 'text-[var(--color-text-muted)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]'
+              }`}
+              aria-current={isActive(item.href) ? 'page' : undefined}
+            >
+              <AdminIcon name={item.icon} class="h-4 w-4 shrink-0" />
+              {item.label}
+            </a>
+          ))}
+        </nav>
+        <div class="border-t border-[var(--color-border)] p-3">
+          <a
+            href="/"
+            target="_blank"
+            rel="noopener"
+            class="flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-[var(--color-text-muted)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
+          >
+            <AdminIcon name="externalLink" class="h-4 w-4 shrink-0" />
+            View site
+          </a>
+        </div>
+      </aside>
+
+      <!-- Mobile sidebar drawer -->
+      <div id="mobile-sidebar" class="fixed inset-0 z-40 hidden lg:hidden">
+        <div id="mobile-sidebar-backdrop" class="absolute inset-0 bg-black/40"></div>
+        <aside class="absolute inset-y-0 left-0 flex w-72 flex-col bg-[var(--color-surface)]">
+          <div class="flex h-16 items-center justify-between border-b border-[var(--color-border)] px-5">
+            <span class="font-display text-base font-bold">Hossain Growth</span>
+            <button type="button" id="mobile-sidebar-close" aria-label="Close menu" class="p-1">
+              <AdminIcon name="x" class="h-5 w-5" />
+            </button>
+          </div>
+          <nav class="flex flex-1 flex-col gap-1 overflow-y-auto p-3">
+            {visibleNavItems.map((item) => (
+              <a
+                href={item.href}
+                class={`flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium ${
+                  isActive(item.href)
+                    ? 'bg-ink-900 text-bone-50'
+                    : 'text-[var(--color-text-muted)] hover:bg-[var(--color-surface-hover)]'
+                }`}
+              >
+                <AdminIcon name={item.icon} class="h-4 w-4 shrink-0" />
+                {item.label}
+              </a>
+            ))}
+          </nav>
+        </aside>
       </div>
-    </header>
-    <main class="p-6">
-      <slot />
-    </main>
+
+      <div class="flex min-w-0 flex-1 flex-col">
+        <header class="flex h-16 items-center justify-between gap-4 border-b border-[var(--color-border)] bg-[var(--color-surface)] px-4 lg:px-6">
+          <button
+            type="button"
+            id="mobile-sidebar-open"
+            aria-label="Open menu"
+            class="rounded-lg p-2 text-[var(--color-text-muted)] hover:bg-[var(--color-surface-hover)] lg:hidden"
+          >
+            <AdminIcon name="menu" class="h-5 w-5" />
+          </button>
+
+          <div class="flex-1"></div>
+
+          <button
+            type="button"
+            id="theme-toggle"
+            aria-label="Toggle dark mode"
+            class="rounded-lg p-2 text-[var(--color-text-muted)] hover:bg-[var(--color-surface-hover)]"
+          >
+            <AdminIcon name="sun" class="h-5 w-5 theme-icon-light" />
+            <AdminIcon name="moon" class="hidden h-5 w-5 theme-icon-dark" />
+          </button>
+
+          <div class="flex items-center gap-3 border-l border-[var(--color-border)] pl-4">
+            <div class="text-right text-sm leading-tight">
+              <p class="font-medium">{session.email}</p>
+              <p class="text-xs capitalize text-[var(--color-text-muted)]">{session.roleKey}</p>
+            </div>
+            <form method="post" action="/api/auth/logout" id="logout-form">
+              <button
+                type="submit"
+                aria-label="Log out"
+                class="rounded-lg p-2 text-[var(--color-text-muted)] hover:bg-[var(--color-surface-hover)]"
+              >
+                <AdminIcon name="logout" class="h-5 w-5" />
+              </button>
+            </form>
+          </div>
+        </header>
+
+        <main id="admin-main-content" class="flex-1 overflow-x-hidden p-4 lg:p-6">
+          <slot />
+        </main>
+      </div>
+    </div>
+
+    <ToastHost client:load />
+
     <script>
-      // Logout is a state-changing request, so do it via fetch (keeps the
-      // CSRF Origin check and cookie semantics identical to the rest of the
-      // API) instead of a plain form POST navigation.
       document.getElementById('logout-form')?.addEventListener('submit', async (e) => {
         e.preventDefault();
         await fetch('/api/auth/logout', { method: 'POST' });
         window.location.href = '/admin/login';
+      });
+
+      const openBtn = document.getElementById('mobile-sidebar-open');
+      const closeBtn = document.getElementById('mobile-sidebar-close');
+      const backdrop = document.getElementById('mobile-sidebar-backdrop');
+      const drawer = document.getElementById('mobile-sidebar');
+      openBtn?.addEventListener('click', () => drawer?.classList.remove('hidden'));
+      closeBtn?.addEventListener('click', () => drawer?.classList.add('hidden'));
+      backdrop?.addEventListener('click', () => drawer?.classList.add('hidden'));
+
+      const themeToggle = document.getElementById('theme-toggle');
+      const lightIcon = document.querySelector('.theme-icon-light');
+      const darkIcon = document.querySelector('.theme-icon-dark');
+
+      function syncThemeIcon() {
+        const isDark = document.documentElement.classList.contains('dark');
+        lightIcon?.classList.toggle('hidden', isDark);
+        darkIcon?.classList.toggle('hidden', !isDark);
+      }
+      syncThemeIcon();
+
+      themeToggle?.addEventListener('click', () => {
+        const isDark = document.documentElement.classList.toggle('dark');
+        localStorage.setItem('admin-theme', isDark ? 'dark' : 'light');
+        syncThemeIcon();
       });
     </script>
   </body>

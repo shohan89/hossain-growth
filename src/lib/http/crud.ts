@@ -41,6 +41,8 @@ export interface CrudResourceOptions<
   /** Extra static WHERE filters derived from query params, e.g. ?isPublished=true. */
   filterParams?: Record<string, AnySQLiteColumn>;
   generateId?: () => string;
+  /** Runs after a successful create/update/delete — e.g. to bust a KV cache keyed off this resource. */
+  onMutate?: () => Promise<void>;
 }
 
 export function createCrudResource<
@@ -125,6 +127,7 @@ export function createCrudResource<
         ipAddress: getClientIp(ctx.request),
       });
 
+      await options.onMutate?.();
       return jsonOk(row, 201);
     } catch (error) {
       throw mapUniqueConstraintError(error, options.resourceName);
@@ -168,6 +171,7 @@ export function createCrudResource<
         ipAddress: getClientIp(ctx.request),
       });
 
+      await options.onMutate?.();
       return jsonOk(row);
     } catch (error) {
       if (error instanceof NotFoundError) throw error;
@@ -192,6 +196,7 @@ export function createCrudResource<
       ipAddress: getClientIp(ctx.request),
     });
 
+    await options.onMutate?.();
     return new Response(null, { status: 204 });
   });
 

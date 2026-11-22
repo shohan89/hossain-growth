@@ -1,0 +1,15 @@
+---
+import AdminLayout from '../../../layouts/AdminLayout.astro';
+import CaseStudiesManager from '../../../components/admin/modules/CaseStudiesManager.tsx';
+import { PERMISSIONS } from '../../../lib/auth/permissions';
+import { hasPermission } from '../../../lib/auth/rbac';
+
+const session = Astro.locals.session!;
+if (!hasPermission(session, PERMISSIONS.CASE_STUDIES_READ)) return Astro.redirect('/admin');
+const canWrite = hasPermission(session, PERMISSIONS.CASE_STUDIES_WRITE);
+const canDelete = hasPermission(session, PERMISSIONS.CASE_STUDIES_DELETE);
+---
+
+<AdminLayout title="Case Studies">
+  <CaseStudiesManager client:load canWrite={canWrite} canDelete={canDelete} />
+</AdminLayout>

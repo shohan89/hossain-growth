@@ -13,6 +13,13 @@ const [services, contactEmail, contactPhone] = await Promise.all([
   getSiteSetting<string>(db, 'contact_email'),
   getSiteSetting<string>(db, 'contact_phone'),
 ]);
+
+const isConsultation = Astro.url.searchParams.get('intent') === 'consultation';
+const source = isConsultation ? 'consultation_request' : 'contact_form';
+const heading = isConsultation ? 'Book your free consultation.' : "Let's talk about growth.";
+const subheading = isConsultation
+  ? 'Tell us a bit about your business and we will schedule a free, no-pressure consultation call.'
+  : 'Book a free consultation and leave with a clear view of where your growth strategy stands today — no pressure, no generic pitch.';
 ---
 
 <SiteLayout
@@ -25,13 +32,8 @@ const [services, contactEmail, contactPhone] = await Promise.all([
         items={[{ label: 'Home', href: '/' }, { label: 'Contact' }]}
         class="text-ink-400"
       />
-      <h1 class="max-w-3xl font-display text-4xl font-bold sm:text-5xl lg:text-6xl">
-        Let's talk about growth.
-      </h1>
-      <p class="max-w-2xl text-lg text-ink-200">
-        Book a free consultation and leave with a clear view of where your growth strategy stands
-        today — no pressure, no generic pitch.
-      </p>
+      <h1 class="max-w-3xl font-display text-4xl font-bold sm:text-5xl lg:text-6xl">{heading}</h1>
+      <p class="max-w-2xl text-lg text-ink-200">{subheading}</p>
     </Container>
   </section>
 
@@ -54,6 +56,8 @@ const [services, contactEmail, contactPhone] = await Promise.all([
         client:load
         turnstileSiteKey={env.TURNSTILE_SITE_KEY}
         services={services.map((service) => ({ slug: service.slug, title: service.title }))}
+        source={source}
+        submitLabel={isConsultation ? 'Request My Free Consultation' : 'Book a Free Consultation'}
       />
     </Container>
   </section>

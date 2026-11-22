@@ -47,6 +47,9 @@
   "vars": {
     "SITE_URL": "http://localhost:4321",
     "ENVIRONMENT": "development",
+    "EMAIL_PROVIDER": "none",
+    "EMAIL_FROM": "no-reply@hossaingrowth.local",
+    "NOTIFICATION_EMAIL_TO": "dev-admin@hossaingrowth.local",
   },
 
   "env": {
@@ -55,6 +58,9 @@
       "vars": {
         "SITE_URL": "https://staging.hossaingrowth.com",
         "ENVIRONMENT": "staging",
+        "EMAIL_PROVIDER": "none",
+        "EMAIL_FROM": "no-reply@staging.hossaingrowth.com",
+        "NOTIFICATION_EMAIL_TO": "REPLACE_WITH_STAGING_NOTIFICATION_EMAIL",
       },
       "d1_databases": [
         {
@@ -80,6 +86,9 @@
       "vars": {
         "SITE_URL": "https://hossaingrowth.com",
         "ENVIRONMENT": "production",
+        "EMAIL_PROVIDER": "resend",
+        "EMAIL_FROM": "no-reply@hossaingrowth.com",
+        "NOTIFICATION_EMAIL_TO": "REPLACE_WITH_PRODUCTION_NOTIFICATION_EMAIL",
       },
       "d1_databases": [
         {

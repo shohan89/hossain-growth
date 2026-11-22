@@ -1,0 +1,15 @@
+---
+import AdminLayout from '../../../layouts/AdminLayout.astro';
+import WebsitePagesManager from '../../../components/admin/modules/WebsitePagesManager.tsx';
+import { PERMISSIONS } from '../../../lib/auth/permissions';
+import { hasPermission } from '../../../lib/auth/rbac';
+
+const session = Astro.locals.session!;
+if (!hasPermission(session, PERMISSIONS.PAGES_READ)) return Astro.redirect('/admin');
+const canWrite = hasPermission(session, PERMISSIONS.PAGES_WRITE);
+const canDelete = hasPermission(session, PERMISSIONS.PAGES_DELETE);
+---
+
+<AdminLayout title="Website Pages">
+  <WebsitePagesManager client:load canWrite={canWrite} canDelete={canDelete} />
+</AdminLayout>

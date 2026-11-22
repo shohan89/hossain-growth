@@ -2,19 +2,23 @@
 import Container from '../ui/Container.astro';
 import SectionHeading from '../ui/SectionHeading.astro';
 import Button from '../ui/Button.astro';
+import MediaImage from '../ui/MediaImage.astro';
+import type { PublicMediaAsset } from '../../lib/content/public';
 
 interface PostRow {
   slug: string;
   title: string;
   excerpt: string | null;
   categoryName: string | null;
+  featuredImageId: string | null;
 }
 
 interface Props {
   posts: PostRow[];
+  mediaMap: Map<string, PublicMediaAsset>;
 }
 
-const { posts } = Astro.props;
+const { posts, mediaMap } = Astro.props;
 ---
 
 {posts.length > 0 && (
@@ -33,6 +37,14 @@ const { posts } = Astro.props;
             href={`/blog/${post.slug}`}
             class="flex flex-col gap-3 rounded-3xl border border-ink-900/8 bg-bone-50 p-8 transition-colors hover:border-lime-500/60"
           >
+            {post.featuredImageId && (
+              <MediaImage
+                asset={mediaMap.get(post.featuredImageId)}
+                alt={post.title}
+                class="h-36 w-full rounded-2xl"
+                fallbackClass="hidden"
+              />
+            )}
             {post.categoryName && (
               <span class="text-xs font-semibold uppercase tracking-wide text-lime-600">
                 {post.categoryName}

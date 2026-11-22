@@ -26,6 +26,8 @@ export const GET: APIRoute = withErrorHandling(async (ctx) => {
   const clauses = [];
   const isPublished = ctx.url.searchParams.get('isPublished');
   if (isPublished !== null) clauses.push(eq(portfolioProjects.isPublished, isPublished === 'true'));
+  const isFeatured = ctx.url.searchParams.get('isFeatured');
+  if (isFeatured !== null) clauses.push(eq(portfolioProjects.isFeatured, isFeatured === 'true'));
   const search = ctx.url.searchParams.get('search');
   if (search) {
     clauses.push(

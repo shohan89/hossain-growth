@@ -4,9 +4,15 @@ import { eq } from 'drizzle-orm';
 import SiteLayout from '../../layouts/SiteLayout.astro';
 import Container from '../../components/ui/Container.astro';
 import Breadcrumbs from '../../components/ui/Breadcrumbs.astro';
-import FinalCta from '../../components/home/FinalCta.astro';
+import ContactForm from '../../components/ContactForm.tsx';
+import MediaImage from '../../components/ui/MediaImage.astro';
 import { getDb } from '../../lib/db/client';
-import { getPortfolioProjectBySlug } from '../../lib/content/public';
+import {
+  getPortfolioProjectBySlug,
+  getMediaAssetsMap,
+  getSeoOverride,
+} from '../../lib/content/public';
+import { resolveSeo } from '../../lib/seo';
 import { services as servicesTable, caseStudies, testimonials } from '../../lib/db/schema';
 
 export const prerender = false;
@@ -44,13 +50,29 @@ const [relatedServices, relatedCaseStudy, relatedTestimonial] = await Promise.al
 ]);
 
 const metricsEntries = Object.entries(project.resultsMetrics ?? {});
-const canonicalUrl = new URL(`/portfolio/${project.slug}`, Astro.url.origin).toString();
+
+const [mediaMap, seoOverride] = await Promise.all([
+  getMediaAssetsMap(db, [project.featuredImageId]),
+  getSeoOverride(db, 'portfolio_project', project.id),
+]);
+const featuredImage = project.featuredImageId ? mediaMap.get(project.featuredImageId) : null;
+
+const seo = resolveSeo({
+  origin: Astro.url.origin,
+  defaultTitle: project.title,
+  defaultDescription: project.summary ?? undefined,
+  defaultPath: `/portfolio/${project.slug}`,
+  defaultImageId: project.featuredImageId,
+  override: seoOverride,
+});
 ---
 
 <SiteLayout
-  title={project.title}
-  description={project.summary ?? undefined}
-  canonicalUrl={canonicalUrl}
+  title={seo.title}
+  description={seo.description}
+  canonicalUrl={seo.canonicalUrl}
+  ogImageUrl={seo.ogImageUrl}
+  noindex={seo.noindex}
 >
   <section class="bg-ink-950 py-20 text-bone-50 lg:py-28">
     <Container class="flex flex-col gap-6">
@@ -86,6 +108,17 @@ const canonicalUrl = new URL(`/portfolio/${project.slug}`, Astro.url.origin).toS
       )}
     </Container>
   </section>
+
+  {featuredImage && (
+    <Container class="-mt-10 pb-4">
+      <MediaImage
+        asset={featuredImage}
+        alt={project.title}
+        class="h-64 w-full rounded-3xl sm:h-96"
+        loading="eager"
+      />
+    </Container>
+  )}
 
   {metricsEntries.length > 0 && (
     <section class="border-b border-ink-900/8 bg-bone-100">
@@ -139,5 +172,28 @@ const canonicalUrl = new URL(`/portfolio/${project.slug}`, Astro.url.origin).toS
     </section>
   )}
 
-  <FinalCta />
+  <section class="bg-ink-950 py-20 text-bone-50 lg:py-28">
+    <Container class="grid gap-12 lg:grid-cols-[1fr_1.4fr]">
+      <div class="flex flex-col gap-4">
+        <h2 class="font-display text-2xl font-semibold">Have a similar project in mind?</h2>
+        <p class="text-ink-200">
+          Tell us about what you're trying to build and we'll let you know how we'd approach it.
+        </p>
+      </div>
+      <div class="rounded-3xl bg-bone-50 p-6 sm:p-8">
+        <ContactForm
+          client:visible
+          turnstileSiteKey={env.TURNSTILE_SITE_KEY}
+          services={relatedServices.filter(Boolean).map((service) => ({
+            slug: service!.slug,
+            title: service!.title,
+          }))}
+          source="project_inquiry"
+          messageLabel="Tell us about your project"
+          messagePlaceholder={`Inspired by ${project.title}? Tell us what you have in mind.`}
+          submitLabel="Send Inquiry"
+        />
+      </div>
+    </Container>
+  </section>
 </SiteLayout>

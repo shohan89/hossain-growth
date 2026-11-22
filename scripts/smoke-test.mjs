@@ -432,6 +432,69 @@ async function main() {
 
     const listRes = await admin('GET', '/api/media');
     check('list media is 200', listRes.status === 200);
+
+    const uploadedRow = uploaded.body?.data;
+    check(
+      'uploaded PNG has width/height metadata extracted',
+      uploadedRow?.width === 1 && uploadedRow?.height === 1,
+      JSON.stringify(uploadedRow),
+    );
+
+    // Unauthorized upload: no session at all.
+    const anonUpload = makeClient(fakeIp(40));
+    const anonForm = new FormData();
+    anonForm.set('file', new Blob([pngBytes], { type: 'image/png' }), 'anon.png');
+    const unauthorized = await anonUpload('POST', '/api/media', anonForm);
+    check('upload without a session is 401', unauthorized.status === 401, unauthorized.status);
+
+    // Oversized file: comfortably over the 10 MB limit.
+    const oversized = new Uint8Array(10 * 1024 * 1024 + 1);
+    const oversizedForm = new FormData();
+    oversizedForm.set('file', new Blob([oversized], { type: 'image/png' }), 'too-big.png');
+    const tooBig = await admin('POST', '/api/media', oversizedForm);
+    check('upload over the size limit is 400', tooBig.status === 400, tooBig.status);
+
+    if (mediaAssetId) {
+      // Replace: same id/URL, different bytes — a 2x1 PNG this time.
+      const pngBytes2x1 = Uint8Array.from(
+        atob(
+          'iVBORw0KGgoAAAANSUhEUgAAAAIAAAABCAIAAAB7QOjdAAAAC0lEQVR4nGNgAAMAAAcAAbKGrPQAAAAASUVORK5CYII=',
+        ),
+        (c) => c.charCodeAt(0),
+      );
+      const replaceForm = new FormData();
+      replaceForm.set('file', new Blob([pngBytes2x1], { type: 'image/png' }), 'replaced.png');
+      const replaced = await admin('POST', `/api/media/${mediaAssetId}/replace`, replaceForm);
+      check('replace media is 200', replaced.status === 200, JSON.stringify(replaced.body));
+      check(
+        'replace keeps the same asset id',
+        replaced.body?.data?.id === mediaAssetId,
+        replaced.body?.data?.id,
+      );
+      check(
+        'replace updates the extracted dimensions',
+        replaced.body?.data?.width === 2 && replaced.body?.data?.height === 1,
+        JSON.stringify(replaced.body?.data),
+      );
+
+      const served = await fetch(`${base}/media/${mediaAssetId}`);
+      check('public media URL serves the replaced bytes', served.status === 200, served.status);
+    }
+
+    const orphanedBefore = await admin('GET', '/api/media/orphaned');
+    check(
+      'orphaned media list is 200 (recent upload excluded by age grace period)',
+      orphanedBefore.status === 200 &&
+        !orphanedBefore.body?.data?.some((a) => a.id === mediaAssetId),
+      JSON.stringify(orphanedBefore.body),
+    );
+
+    const orphanCleanupUnauthorized = await editor('POST', '/api/media/orphaned', {});
+    check(
+      'editor cannot run orphan cleanup (no media.delete)',
+      orphanCleanupUnauthorized.status === 403,
+      orphanCleanupUnauthorized.status,
+    );
   }
 
   // --- SEO metadata ---
@@ -515,6 +578,190 @@ async function main() {
       check(
         'CSV export contains lead row',
         typeof csv.raw === 'string' && csv.raw.includes('smoke-lead@example.test'),
+      );
+      check('CSV export includes the budget column', csv.raw?.includes('budget'));
+    }
+  }
+
+  // --- leads: budget field end-to-end ---
+  console.log('\nleads: budget field');
+  {
+    const anon = makeClient(fakeIp(32));
+    const created = await anon('POST', '/api/leads', {
+      name: 'Budget Test Lead',
+      email: `budget-test-${Date.now()}@example.test`,
+      budget: '$5,000–$10,000/mo',
+      source: 'contact_form',
+      turnstileToken: 't',
+    });
+    check('lead with budget is 201', created.status === 201, JSON.stringify(created.body));
+    check('stored budget matches submission', created.body?.data?.budget === '$5,000–$10,000/mo');
+  }
+
+  // --- leads: authenticated manual create bypasses Turnstile ---
+  console.log('\nleads: admin manual create');
+  {
+    const manualEmail = `manual-lead-${Date.now()}@example.test`;
+    const manual = await admin('POST', '/api/leads', {
+      name: 'Manually Logged Lead',
+      email: manualEmail,
+      status: 'contacted',
+      // Deliberately no turnstileToken — an authenticated leads.write
+      // session should not need one.
+    });
+    check(
+      'authenticated manual lead create is 201',
+      manual.status === 201,
+      JSON.stringify(manual.body),
+    );
+    check('manual lead defaults source to "manual"', manual.body?.data?.source === 'manual');
+
+    const assignableRes = await editor('GET', '/api/admin-users/assignable');
+    check(
+      'assignable admins lookup works for a non-users.manage role',
+      assignableRes.status === 200 && Array.isArray(assignableRes.body?.data),
+      assignableRes.status,
+    );
+  }
+
+  // --- leads: spam (honeypot) and duplicate-submission protection ---
+  console.log('\nleads: spam & duplicate protection');
+  {
+    const anon = makeClient(fakeIp(33));
+    const honeypotEmail = `honeypot-${Date.now()}@example.test`;
+    const spam = await anon('POST', '/api/leads', {
+      name: 'Spam Bot',
+      email: honeypotEmail,
+      source: 'contact_form',
+      website_url: 'http://spam.example.test', // the decoy field
+      turnstileToken: 't',
+    });
+    check(
+      'honeypot submission still returns 201 (no signal to the bot)',
+      spam.status === 201,
+      spam.status,
+    );
+
+    const spamCheck = await admin('GET', `/api/leads?search=${encodeURIComponent(honeypotEmail)}`);
+    check(
+      'honeypot submission never created a real lead row',
+      spamCheck.body?.data?.length === 0,
+      JSON.stringify(spamCheck.body),
+    );
+
+    const dupeEmail = `dupe-${Date.now()}@example.test`;
+    const dupeClient = makeClient(fakeIp(34));
+    const first = await dupeClient('POST', '/api/leads', {
+      name: 'Duplicate Submitter',
+      email: dupeEmail,
+      message: 'First message.',
+      source: 'contact_form',
+      turnstileToken: 't',
+    });
+    check('first submission is 201', first.status === 201, JSON.stringify(first.body));
+
+    const second = await dupeClient('POST', '/api/leads', {
+      name: 'Duplicate Submitter',
+      email: dupeEmail,
+      message: 'Second message, sent moments later.',
+      source: 'contact_form',
+      turnstileToken: 't',
+    });
+    check(
+      'resubmission within the window is 200, not a new 201',
+      second.status === 200,
+      second.status,
+    );
+    check(
+      'resubmission resolves to the same lead, not a new one',
+      second.body?.data?.id === first.body?.data?.id,
+      JSON.stringify({ first: first.body?.data?.id, second: second.body?.data?.id }),
+    );
+
+    const dupeDetail = await admin('GET', `/api/leads/${first.body?.data?.id}`);
+    check(
+      'the resubmitted message was captured as a note on the original lead',
+      dupeDetail.body?.data?.notes?.some((n) => n.note.includes('Second message')),
+      JSON.stringify(dupeDetail.body?.data?.notes),
+    );
+  }
+
+  // --- leads: a failed/unconfigured email notification never blocks lead creation ---
+  console.log('\nleads: notification failure does not lose lead data');
+  {
+    // The dev environment's EMAIL_PROVIDER is "none", so every lead
+    // created in this entire script run has already exercised this path —
+    // confirm here explicitly that creation still succeeded regardless.
+    const anon = makeClient(fakeIp(35));
+    const res = await anon('POST', '/api/leads', {
+      name: 'Notification Resilience Check',
+      email: `notify-check-${Date.now()}@example.test`,
+      source: 'contact_form',
+      turnstileToken: 't',
+    });
+    check(
+      'lead is saved even though no email provider is configured',
+      res.status === 201 && Boolean(res.body?.data?.id),
+      JSON.stringify(res.body),
+    );
+  }
+
+  // --- Phase 8: admin-managed redirects actually redirect live traffic ---
+  console.log('\nseo & redirects (Phase 8)');
+  {
+    const anon = makeClient(fakeIp(36));
+    const path = `/smoke-redirect-${Date.now()}`;
+    const created = await admin('POST', '/api/redirects', {
+      fromPath: path,
+      toPath: '/contact',
+      statusCode: 302,
+    });
+    check('create redirect is 201', created.status === 201, JSON.stringify(created.body));
+    const redirectId = created.body?.data?.id;
+
+    const followed = await fetch(`${base}${path}`, { redirect: 'manual' });
+    check(
+      'the new redirect takes effect immediately (no cache delay)',
+      followed.status === 302,
+      followed.status,
+    );
+    check(
+      'redirect points at the configured destination',
+      followed.headers.get('location')?.endsWith('/contact'),
+      followed.headers.get('location'),
+    );
+
+    if (redirectId) {
+      const deleted = await admin('DELETE', `/api/redirects/${redirectId}`);
+      check('delete redirect is 204', deleted.status === 204, deleted.status);
+      const after = await fetch(`${base}${path}`, { redirect: 'manual' });
+      check('path no longer redirects after deletion', after.status === 404, after.status);
+    }
+
+    // --- Phase 8: an SEO override is actually applied to the public page ---
+    if (serviceId) {
+      const serviceRow = await admin('GET', `/api/services/${serviceId}`);
+      const slug = serviceRow.body?.data?.slug;
+
+      const upsert = await admin('PUT', `/api/seo-metadata/service/${serviceId}`, {
+        metaTitle: 'Smoke Test Override Title',
+        metaDescription: 'Smoke test override description.',
+        noIndex: true,
+      });
+      check('seo override upsert is 201', upsert.status === 201, JSON.stringify(upsert.body));
+
+      const page = await anon('GET', `/services/${slug}`);
+      check(
+        'public page title reflects the override',
+        page.raw?.includes('Smoke Test Override Title'),
+      );
+      check(
+        'public page og:description reflects the override',
+        page.raw?.includes('Smoke test override description.'),
+      );
+      check(
+        'public page is noindex when the override sets it',
+        page.raw?.includes('noindex, nofollow'),
       );
     }
   }

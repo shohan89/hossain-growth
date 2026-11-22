@@ -2,9 +2,9 @@
 
 Premium digital marketing agency website + admin CMS, built on Astro (SSR) and Cloudflare's edge platform (Workers, D1, R2, KV, Turnstile).
 
-Planning docs: see [`docs/`](./docs) — `PROJECT_REQUIREMENTS.md`, `TECHNICAL_ARCHITECTURE.md`, `DATABASE_SCHEMA.md`, `API_DOCUMENTATION.md`, `DEVELOPMENT_ROADMAP.md`.
+Planning docs: see [`docs/`](./docs) — `PROJECT_REQUIREMENTS.md`, `TECHNICAL_ARCHITECTURE.md`, `DATABASE_SCHEMA.md`, `API_DOCUMENTATION.md`, `DEVELOPMENT_ROADMAP.md`, `QA_REPORT.md`.
 
-This README covers **Phase 0/2 (infrastructure), Phase 3 (database architecture + backend API), Phase 4 (secure admin authentication & authorization), and Phase 5 (public website UI/UX)**.
+This README covers **Phase 0/2 (infrastructure), Phase 3 (database architecture + backend API), Phase 4 (secure admin authentication & authorization), Phase 5 (public website UI/UX), Phase 6 (admin dashboard & CMS), Phase 7 (R2 media hardening & lead/notification pipeline), and Phase 8 (SEO, performance, accessibility & QA)**. The full Phase 8 audit — what was checked, what was fixed, and what's explicitly out of scope — is in **[`docs/QA_REPORT.md`](./docs/QA_REPORT.md)**.
 
 ## Stack
 
@@ -104,14 +104,16 @@ cp .dev.vars.example .dev.vars
 | `TURNSTILE_SITE_KEY`   | Turnstile widget (client-side)     | Cloudflare's published test site key (always passes)                         |
 | `TURNSTILE_SECRET_KEY` | Turnstile server-side verification | Cloudflare's published test secret key (always passes)                       |
 | `SESSION_SIGNING_KEY`  | Signs session cookies (`jose`)     | Random value, pre-generated for you — **do not reuse in staging/production** |
+| `EMAIL_API_KEY`        | Email provider API key (Resend)    | Blank — provider is `none` locally, so nothing tries to send                 |
 
-Non-secret config (`SITE_URL`, `ENVIRONMENT`) lives in `wrangler.jsonc` under `vars` / `env.<name>.vars` — safe to commit, never put secrets there.
+Non-secret config (`SITE_URL`, `ENVIRONMENT`, `EMAIL_PROVIDER`, `EMAIL_FROM`, `NOTIFICATION_EMAIL_TO`) lives in `wrangler.jsonc` under `vars` / `env.<name>.vars` — safe to commit, never put secrets there. `EMAIL_API_KEY` is the one exception kept out of `wrangler.jsonc` entirely, same as the other secrets above — it's declared only in `.dev.vars` locally and as a real Wrangler secret in staging/production.
 
 For staging/production, set real secrets with:
 
 ```bash
 npx wrangler secret put TURNSTILE_SECRET_KEY --env staging
 npx wrangler secret put SESSION_SIGNING_KEY --env staging
+npx wrangler secret put EMAIL_API_KEY --env staging
 ```
 
 Never commit `.dev.vars`, never hardcode secrets in source, never put secrets in `wrangler.jsonc`.
@@ -210,6 +212,49 @@ Builds the Astro app (`dist/client` static assets + `dist/server` Worker) and ru
 
 Full endpoint reference (auth, RBAC, every resource, the lead pipeline, error codes): **`docs/API_DOCUMENTATION.md`**.
 
+## Admin dashboard (Phase 6)
+
+`/admin` is a full CMS dashboard built as React islands on top of the Phase 3/4 REST API, with a shared design system: collapsible sidebar, class-based dark/light mode (`src/styles/global.css` `.dark` token overrides, toggled and persisted from `AdminLayout.astro`), and a reusable kit (`src/components/admin/ui/`) — data table with sort/search/filter/pagination, modals, confirm dialogs, toasts, form fields, a dependency-free rich text editor, and a media picker. Most modules are instances of one config-driven `ResourceManager` component; Leads/CRM, the Media Library, SEO Manager, Site Settings, and Roles & Permissions are bespoke where the workflow doesn't fit a plain CRUD form.
+
+The 15 modules: Overview, Services (+ categories), Portfolio, Case Studies, Blog Posts, Categories & Tags, Testimonials, Leads/CRM, Media Library, Website Pages, Navigation (+ redirects), SEO Manager, Site Settings, User Management (admin users + roles/permissions), and Activity Logs (read-only audit trail by design). The sidebar only shows modules the signed-in role has permission for, and every page re-checks that permission server-side (`hasPermission` + redirect) in addition to the API's own `requirePermission` checks — the dashboard never relies on hiding a nav link as its only access control.
+
+A few real gaps surfaced while building this against the Phase 3 schema and were fixed rather than faked in the UI:
+
+- **`leads.budget`**, **`portfolio_projects.industry`**, **`portfolio_projects.project_url`**, and **`portfolio_projects.is_featured`** didn't exist — added via `migrations/0004_phase6_crm_portfolio_fields.sql`. The public contact form now also collects an optional budget range.
+- **No public media-serving route existed** (`GET /media/:id`, new) — needed for real image previews and a working "copy public URL" action in the Media Library, and for featured images to render for anonymous site visitors at all.
+- **No way to replace a file's bytes in place** — `POST /api/media/:id/replace` overwrites the R2 object and metadata for the same asset id, so existing references (featured images, etc.) don't break.
+- **No way to manually log a lead** without going through the public Turnstile-gated form — `POST /api/leads` now accepts an authenticated request with `leads.write` and skips Turnstile/rate-limiting for it (schema: `adminCreateLeadSchema`).
+- **No lightweight "who can I assign this to" lookup** — `GET /api/admin-users/assignable` (any authenticated session, not gated behind `users.manage`) returns just `{id, name, email}` for active admins, used for lead assignment and author display.
+- **No way to delete a role** — `DELETE /api/roles/:id` added; it's blocked with a clear `409 CONFLICT` if any admin user is still assigned to that role (the FK is `onDelete: 'restrict'`).
+- `createCaseStudySchema`/`createPortfolioProjectSchema`/`createBlogPostSchema` rejected a plain ISO date **string** for `publishedAt`/`scheduledAt` (drizzle-zod's default mapping for a timestamp column requires an actual `Date`, which JSON can't carry) — overridden with `z.coerce.date()` so the dashboard (or any other JSON client) can actually set these fields.
+
+**Known scope cut:** industries and the structured per-service landing-page copy (benefits/process/deliverables/FAQs) are still static TypeScript content (`src/content/`) from Phase 5, not database-backed, so there's no admin UI for editing them — see Phase 5's README notes for why.
+
+## R2 media & lead pipeline hardening (Phase 7)
+
+**Media library.** Uploads still go straight through the Worker to R2 (`env.MEDIA.put`) rather than via presigned URLs — the browser never sees an R2 credential either way, and a direct server-mediated upload is simpler and already fully exercised by `requirePermission(..., PERMISSIONS.MEDIA_WRITE)`. What Phase 7 adds on top:
+
+- **Image metadata was always empty.** `width`/`height` on `media_assets` existed since Phase 3 but nothing ever populated them. `src/lib/image-dimensions.ts` reads them straight out of the file's header bytes (PNG/GIF/WebP/JPEG — no image library, Workers has none) on both upload and replace.
+- **Orphaned file cleanup.** `GET /api/media/orphaned` finds media assets no record anywhere references (checked across every featured-image/avatar/gallery/OG-image column), excluding anything uploaded in the last hour so a file an admin just picked but hasn't attached yet is never flagged. `POST /api/media/orphaned` deletes the current candidates from both R2 and D1. Surfaced in the Media Library as a dismissible "N unused files" panel with a confirm-gated "Clean up" action.
+- **Delivery endpoint.** Public delivery is the Worker-proxied `GET /media/:id` route added in Phase 6 (a "controlled delivery endpoint," per the brief) rather than a separate R2 custom domain — adding `media.hossaingrowth.com` as a direct R2 custom domain later is a Cloudflare dashboard + DNS change, not a code change, and would simply replace the base URL these routes already centralize.
+
+**Lead system.** The one public form from Phase 5 is now four distinct, properly tagged entry points, all hitting the same `POST /api/leads`:
+
+| Inquiry type             | Where                                                                                          | `source`               |
+| ------------------------ | ---------------------------------------------------------------------------------------------- | ---------------------- |
+| General contact          | `/contact`                                                                                     | `contact_form`         |
+| Consultation request     | `/contact?intent=consultation` (every "Book a Free Consultation" CTA site-wide now links here) | `consultation_request` |
+| Service-specific inquiry | Bottom of every service page, service locked                                                   | `service_inquiry`      |
+| Project inquiry          | Bottom of every portfolio project page                                                         | `project_inquiry`      |
+
+Country, budget, and service selection were already there from Phase 6; Turnstile, server-side validation (Zod), and IP rate limiting (5/min) were already there from Phase 4/5. New in Phase 7:
+
+- **Spam protection beyond Turnstile.** Every form includes a visually hidden honeypot field (`website_url`). A filled-in value means a bot auto-filled every input — the request still gets a normal `201` response (so the bot has no signal it was caught), but nothing is written to the `leads` table; the rejection is recorded in the activity log instead.
+- **Duplicate handling.** A second submission from the same email within 15 minutes doesn't create a second lead — it's folded into the existing one as a note (`200`, not `201`, with the original lead's id), so a double-click or a "sorry, one more thing" resend doesn't clutter the CRM with near-duplicate rows.
+- **Manual lead entry.** An authenticated request with `leads.write` (the dashboard's "Log lead" button) skips Turnstile/rate-limiting entirely and defaults `source` to `"manual"` — see `adminCreateLeadSchema` in Phase 6's notes above.
+
+**Email notifications.** `src/lib/email.ts` is a tiny, swappable provider abstraction — `EMAIL_PROVIDER=resend` talks to Resend's HTTPS API (Workers has no raw SMTP socket API, so an HTTP-based provider is the only realistic choice), and `EMAIL_PROVIDER=none` (the local default) just skips sending. `src/lib/lead-notifications.ts` builds the agency-facing email from a successfully-created lead and calls it — **after** the `leads` row is already committed, inside its own `try/catch` that only logs on a genuine delivery failure (a misconfigured provider is not logged as a "failure," it's expected). A failed or unconfigured send can never roll back or block lead creation — this is unit-tested directly (`test/email.spec.ts`, `test/lead-notifications.spec.ts`) and confirmed live (`scripts/smoke-test.mjs`: a lead is still saved with `EMAIL_PROVIDER=none`).
+
 ## 8. Testing
 
 ```bash
@@ -218,8 +263,8 @@ npm run preview                       # in another terminal: build + run under w
 node scripts/smoke-test.mjs           # live end-to-end smoke test against it
 ```
 
-- **Unit tests** (`test/*.spec.ts`, 31 passing, pure logic, no bindings touched): password hashing, RBAC permission checks, pagination/query parsing, session JWT round-trip + tamper/expiry/malformed rejection, account-lockout threshold, CSRF Origin-matching.
-- **Live smoke test** (`scripts/smoke-test.mjs`, 88/88 checks passing): exercises every API endpoint against a real running `wrangler dev` instance — login/logout, the three-role RBAC boundary (super admin vs. narrowed admin vs. editor), configurable-permissions endpoints, account lockout, Turnstile enforcement on login/leads/reset, CSRF Origin rejection, session-cookie attributes, server-side `/admin` route protection, password-change session invalidation, the full password-reset workflow, full CRUD + joins on several resources, media upload to R2, SEO metadata upsert, the complete lead pipeline (public create → admin status/assignment/notes → CSV export), rate limiting, and audit-log verification. Requires `npm run db:seed:local` first (uses the seeded dev super admin/admin/editor accounts). Repeatable — each run uses time-derived fake source IPs and emails so re-running it immediately doesn't trip the previous run's rate limits/lockouts.
+- **Unit tests** (`test/*.spec.ts`, 54 passing, pure logic, no bindings touched): password hashing, RBAC permission checks, pagination/query parsing, session JWT round-trip + tamper/expiry/malformed rejection, account-lockout threshold, CSRF Origin-matching, image-dimension header parsing (`test/image-dimensions.spec.ts`), the email provider abstraction including HTTP-failure and network-failure paths (`test/email.spec.ts`), lead-notification failure handling (`test/lead-notifications.spec.ts`), SEO-override merging (`test/seo.spec.ts`), and the redirect cache's hit/miss/no-match paths (`test/redirect-cache.spec.ts`).
+- **Live smoke test** (`scripts/smoke-test.mjs`, 119/119 checks passing): exercises every API endpoint against a real running `wrangler dev` instance — login/logout, the three-role RBAC boundary (super admin vs. narrowed admin vs. editor), configurable-permissions endpoints, account lockout, Turnstile enforcement on login/leads/reset, CSRF Origin rejection, session-cookie attributes, server-side `/admin` route protection, password-change session invalidation, the full password-reset workflow, full CRUD + joins on several resources, rate limiting, and audit-log verification. Phase 7 additions: media upload with extracted width/height, unauthorized-upload rejection, oversized-file rejection, in-place file replace (same id, new bytes, public URL serves the new content), the orphaned-media list and its permission-gated cleanup, the budget field end to end, authenticated manual lead creation bypassing Turnstile, the `assignable`-admins lookup for a non-`users.manage` role, honeypot spam rejection (confirmed no lead row is created), duplicate-submission merging into a note on the original lead, and lead creation succeeding with no email provider configured. Requires `npm run db:seed:local` first (uses the seeded dev super admin/admin/editor accounts). Repeatable — each run uses time-derived fake source IPs and emails so re-running it immediately doesn't trip the previous run's rate limits/lockouts; confirmed by running it twice consecutively.
 - A D1-binding Vitest suite was written (`test/db.spec.ts.skip`) but is currently blocked by an upstream bug — see "Known rough edges" below. The live smoke test covers the same ground against real D1/R2.
 
 ## 9. Scripts reference
@@ -253,14 +298,22 @@ src/
     blog/, contact.astro, privacy-policy.astro,
     terms-and-conditions.astro   Public marketing site (14 page types)
     robots.txt.ts, sitemap.xml.ts  Dynamic SEO endpoints
+    media/[id].ts   Public media-serving route (R2 bytes by asset id)
+    admin/          Dashboard pages — one folder per module, thin Astro
+                    wrappers that permission-gate + mount a React island
   components/
     home/            Homepage section components (Hero, ServicesOverview, …)
     layout/          Navbar, Footer
-    ui/              Shared design-system primitives (Button, Container, Faq, …)
-                     React islands (admin/public/shared) live alongside these
+    ui/              Shared public design-system primitives (Button, Container, Faq, …)
+    admin/
+      ui/            Shared dashboard kit (Table, Modal, ConfirmDialog, Toast,
+                     form fields, RichTextEditor, MediaPickerField, …)
+      modules/       Per-module dashboard components (Blog, Portfolio, Leads, …)
+      ResourceManager.tsx  Config-driven CRUD UI reused by most modules
   content/           Static, non-DB marketing content (industries, service detail copy)
   layouts/           Astro layouts — `PublicLayout` (bare shell, used by admin auth
-                     pages), `SiteLayout` (marketing chrome: nav + footer + SEO)
+                     pages), `SiteLayout` (marketing chrome: nav + footer + SEO),
+                     `AdminLayout` (dashboard shell: sidebar + dark/light mode)
   middleware.ts     Resolves the session cookie into `locals.session` on every request
   lib/
     db/schema/      Drizzle schema, one file per domain, barrel-exported
@@ -272,7 +325,14 @@ src/
     rate-limit.ts   KV-backed fixed-window limiter
     audit.ts        Writes to activity_logs
     turnstile.ts    Server-side Turnstile verification
+    email.ts        Swappable email-provider abstraction (Resend HTTP API, or "none")
+    lead-notifications.ts  Builds + sends the new-lead email; never blocks lead creation
+    image-dimensions.ts    Reads width/height from PNG/GIF/WebP/JPEG header bytes
+    media-orphans.ts       Finds media assets no record references anywhere
+    leads-constants.ts     Shared budget-band options (public form + admin CRM)
     content/public.ts  Published-only read queries for the public site
+    admin/          Dashboard-only client code: API fetch wrapper, list/pagination
+                    hook, toast event bus, icon set, datetime helpers
     seo.ts          SEO metadata defaults + JSON-LD schema builders
   env.d.ts          Astro.locals / Cloudflare runtime types
 migrations/         Real migrations (schema + system reference data) — safe for every environment
@@ -314,7 +374,10 @@ wrangler.jsonc      Cloudflare bindings (D1/R2/KV), env-specific config
 - [x] RESTful CRUD for every resource, pagination/filter/sort/search, Zod validation, centralized error handling, consistent response envelopes, audit logging on every mutation, rate limiting on login + public lead creation
 - [x] Full lead management API: status pipeline, assignment, notes, follow-up dates, source/country/service filters, CSV export
 - [x] **Phase 4** — Super Admin / Admin / Editor role model with configurable, per-role permissions (`PUT /api/roles/:id/permissions`); PBKDF2-600k password hashing; server-side session management (signed JWT + `tokenVersion` invalidation on password change/reset, 8h expiry); password reset workflow (Turnstile-verified request → one-time token → reset); account lockout (5 failed attempts/email → 15 min) on top of IP rate limiting; `HttpOnly` + `Secure` + `SameSite=Strict` session cookie; CSRF Origin check on authenticated mutations; Turnstile on login, lead creation, and password-reset requests; server-enforced `/admin` route protection (not just client-side); no default/baked-in admin password anywhere — `scripts/create-super-admin.mjs` documents real provisioning
-- [x] **Phase 5** — Full public website UI/UX: dark-charcoal/off-white/lime design system (Tailwind v4 `@theme` tokens, Space Grotesk + Inter), accessible Navbar/Footer, bento-grid homepage (16 sections), Services overview + 6 SSR service detail pages (hero/problem-solution/benefits/process/deliverables/case studies/FAQ/CTA), Portfolio + project detail, Case Studies + detail, Industries, Blog + post detail, Contact (lead form with Turnstile), Privacy Policy, Terms & Conditions. All list/detail content is D1-driven through `lib/content/public.ts` (published-only); industries and per-service long-form copy are static (`src/content/`) since they aren't well modeled by the existing schema. SEO: per-page canonical/OG/Twitter meta, Organization/Service/Article/BreadcrumbList/FAQPage JSON-LD, dynamic `/sitemap.xml` and `/robots.txt`. Respects `prefers-reduced-motion`; mobile nav is a vanilla-JS (non-React) toggle for performance. **Known scope cut:** no public media-serving endpoint exists yet (R2-backed images), so project/post imagery uses gradient placeholders rather than real `<img>` tags — wire up a media CDN route before using real photography.
+- [x] **Phase 5** — Full public website UI/UX: dark-charcoal/off-white/lime design system (Tailwind v4 `@theme` tokens, Space Grotesk + Inter), accessible Navbar/Footer, bento-grid homepage (16 sections), Services overview + 6 SSR service detail pages (hero/problem-solution/benefits/process/deliverables/case studies/FAQ/CTA), Portfolio + project detail, Case Studies + detail, Industries, Blog + post detail, Contact (lead form with Turnstile), Privacy Policy, Terms & Conditions. All list/detail content is D1-driven through `lib/content/public.ts` (published-only); industries and per-service long-form copy are static (`src/content/`) since they aren't well modeled by the existing schema. SEO: per-page canonical/OG/Twitter meta, Organization/Service/Article/BreadcrumbList/FAQPage JSON-LD, dynamic `/sitemap.xml` and `/robots.txt`. Respects `prefers-reduced-motion`; mobile nav is a vanilla-JS (non-React) toggle for performance. **Known scope cut at the time:** no public media-serving endpoint existed yet, so project/post imagery used gradient placeholders rather than real `<img>` tags — added in Phase 6 (`GET /media/:id`); the public pages still haven't been rewired to use it (unchanged scope cut, now just missing the plumbing fix rather than the plumbing itself).
+- [x] **Phase 6** — Full admin dashboard & CMS at `/admin`: 15 permission-gated modules (Overview, Services, Portfolio, Case Studies, Blog Posts, Categories & Tags, Testimonials, Leads/CRM, Media Library, Website Pages, Navigation, SEO Manager, Site Settings, User Management, Activity Logs), all backed by real D1/R2 through the existing REST API — no mock data. Dashboard design system with dark/light mode; shared table/modal/form/toast kit; dependency-free rich text editor; media picker with upload/replace/delete/copy-URL. Fixed real gaps found along the way: added `leads.budget` and `portfolio_projects.industry`/`project_url`/`is_featured` (migration `0004`), a public media-serving route, in-place file replace, Turnstile-free manual lead entry for authenticated staff, an `assignable`-admins lookup not gated behind `users.manage`, role deletion with FK-conflict protection, and `z.coerce.date()` fixes so date fields actually accept JSON strings. See "Admin dashboard (Phase 6)" above for details.
+- [x] **Phase 7** — R2 media hardening: image width/height actually extracted from file bytes on upload and replace (`lib/image-dimensions.ts`, no image library); orphaned-media detection and permission-gated cleanup (`GET`/`POST /api/media/orphaned`), surfaced in the dashboard. Lead system: the single public form split into four tagged inquiry types (general contact, consultation request, service-specific, project-specific — see "R2 media & lead pipeline hardening" above) all hitting the same hardened `POST /api/leads`; a honeypot field for spam beyond Turnstile (silently dropped, no signal to the bot); same-email resubmissions within 15 minutes merged into the original lead as a note instead of a duplicate row. Email notifications on new leads through a swappable, env-configured provider (`lib/email.ts` — Resend HTTP API or a no-op "none"), sent after the lead is already committed, inside a `try/catch` that only logs genuine delivery failures — a missing or failing provider can never lose lead data. Never hardcodes an API key: `EMAIL_API_KEY` follows the same secret-only pattern as `TURNSTILE_SECRET_KEY`.
 - [x] `docs/API_DOCUMENTATION.md` updated to the actual implemented endpoints, including the full auth/security surface
-- [x] Unit tests (31, Vitest) + live smoke test (88/88 checks) against a real `wrangler dev` instance with real D1/R2/KV, covering the full security surface above
+- [x] **Phase 8** — SEO/performance/accessibility/QA audit, documented in full in **[`docs/QA_REPORT.md`](./docs/QA_REPORT.md)**. The two biggest real fixes: admin-set SEO overrides (title/description/canonical/OG image/noindex) were saved by the dashboard but never read back by any public page — now wired end to end; and the public site rendered zero real `<img>` tags anywhere despite every content type having an image field — now rendering real images with real alt text and explicit width/height (fixing a long-standing "known scope cut" from Phase 5/6). Also: admin-managed redirects were dead configuration, now enforced and KV-cached; added `ProfessionalService` schema (homepage) and self-referencing `hreflang`; fixed three real WCAG contrast failures (one color pair was ~1.8:1 against its background, far below the 4.5:1 minimum) found by computing exact ratios rather than eyeballing them; added a skip-to-content link to the admin dashboard; added light edge caching for public pages.
+- [x] Unit tests (54, Vitest) + live smoke test (119/119 checks) against a real `wrangler dev` instance with real D1/R2/KV, covering the full security surface above; Phase 6 CRUD/permission boundaries verified live against `wrangler dev` (full create/update/delete cycles, media upload/replace/serve, admin lead creation, SEO upsert, role-based 403s and page redirects); Phase 7 additions verified live too (unauthorized/oversized upload rejection, in-place replace, orphan cleanup, honeypot rejection, duplicate merging, notification non-blocking behavior); Phase 8's redirect enforcement and SEO-override wiring verified live too (see QA report) — confirmed repeatable across multiple consecutive runs
 - [ ] Staging/production resources and secrets (deferred — not deploying yet)

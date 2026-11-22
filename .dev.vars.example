@@ -8,3 +8,11 @@ TURNSTILE_SECRET_KEY=1x0000000000000000000000000000000AA
 
 # Session cookie signing key (generate with: openssl rand -base64 32)
 SESSION_SIGNING_KEY=replace-with-a-real-random-base64-secret
+
+# Lead notification email (optional — provider defaults to "none", which
+# only logs instead of sending; a missing/failed send never blocks lead
+# creation). Only "resend" is implemented today — see src/lib/email.ts.
+EMAIL_PROVIDER=none
+EMAIL_API_KEY=
+EMAIL_FROM=no-reply@yourdomain.com
+NOTIFICATION_EMAIL_TO=team@yourdomain.com

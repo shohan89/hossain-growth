@@ -54,6 +54,8 @@ export const portfolioProjects = sqliteTable(
     id: text('id').primaryKey(),
     slug: text('slug').notNull(),
     clientName: text('client_name'),
+    industry: text('industry'),
+    projectUrl: text('project_url'),
     title: text('title').notNull(),
     summary: text('summary'),
     content: text('content'),
@@ -65,6 +67,7 @@ export const portfolioProjects = sqliteTable(
     featuredImageId: text('featured_image_id').references(() => mediaAssets.id, {
       onDelete: 'set null',
     }),
+    isFeatured: integer('is_featured', { mode: 'boolean' }).notNull().default(false),
     isPublished: integer('is_published', { mode: 'boolean' }).notNull().default(false),
     publishedAt: integer('published_at', { mode: 'timestamp' }),
     createdBy: text('created_by').references(() => adminUsers.id, { onDelete: 'set null' }),

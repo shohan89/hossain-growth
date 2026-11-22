@@ -5,11 +5,30 @@ import { getCachedTokenVersion } from './lib/auth/token-version';
 import { isMutatingMethod, isSameOrigin } from './lib/http/csrf';
 import { jsonError } from './lib/http/response';
 import { CsrfError } from './lib/http/errors';
+import { getDb } from './lib/db/client';
+import { getCachedRedirect } from './lib/redirect-cache';
 
 const ADMIN_PAGE_PREFIX = '/admin';
 const ADMIN_LOGIN_PATH = '/admin/login';
 
 export const onRequest = defineMiddleware(async (context, next) => {
+  // Admin-managed redirects (Navigation module's "Redirects" tab) —
+  // checked first and only for public GET page requests, so a
+  // retired/moved URL redirects before anything else runs. Never applies
+  // to /admin or /api. The map is KV-cached (see getCachedRedirect) so
+  // this doesn't mean a D1 query on every request.
+  if (
+    context.request.method === 'GET' &&
+    !context.url.pathname.startsWith(ADMIN_PAGE_PREFIX) &&
+    !context.url.pathname.startsWith('/api/')
+  ) {
+    const db = getDb(env.DB);
+    const redirect = await getCachedRedirect(db, env.CACHE, context.url.pathname);
+    if (redirect) {
+      return context.redirect(redirect.toPath, redirect.statusCode as 301 | 302 | 307 | 308);
+    }
+  }
+
   const token = context.cookies.get(SESSION_COOKIE_NAME)?.value;
   let session = token ? await verifySessionToken(token, env.SESSION_SIGNING_KEY) : null;
 
@@ -53,5 +72,32 @@ export const onRequest = defineMiddleware(async (context, next) => {
     return context.redirect(`${ADMIN_LOGIN_PATH}?next=${next}`, 302);
   }
 
-  return next();
+  const response = await next();
+
+  // Light edge/browser caching for public pages only — admin pages are
+  // session-specific and already noindexed, so they're excluded. Content
+  // is CMS-driven and can change at any time, so this intentionally
+  // stays short: a brief `max-age` plus `stale-while-revalidate` lets
+  // Cloudflare's edge serve a cached copy for a few seconds while
+  // revalidating in the background, which meaningfully helps repeat page
+  // views without risking long-lived stale content after an edit.
+  if (
+    context.request.method === 'GET' &&
+    response.status === 200 &&
+    !context.url.pathname.startsWith(ADMIN_PAGE_PREFIX) &&
+    !context.url.pathname.startsWith('/api/') &&
+    (response.headers.get('content-type')?.includes('text/html') ?? false)
+  ) {
+    try {
+      response.headers.set(
+        'cache-control',
+        'public, max-age=0, s-maxage=30, stale-while-revalidate=300',
+      );
+    } catch {
+      // Some response objects have immutable headers — caching is a
+      // nice-to-have, never worth failing the request over.
+    }
+  }
+
+  return response;
 });

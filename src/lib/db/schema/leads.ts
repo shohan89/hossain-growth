@@ -21,6 +21,7 @@ export const leads = sqliteTable(
     phone: text('phone'),
     company: text('company'),
     country: text('country'),
+    budget: text('budget'),
     message: text('message'),
     source: text('source').notNull().default('contact_form'),
     serviceInterest: text('service_interest', { mode: 'json' })

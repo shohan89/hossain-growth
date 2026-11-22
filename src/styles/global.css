@@ -9,7 +9,13 @@
   --color-ink-800: #1a1b1d;
   --color-ink-700: #26282b;
   --color-ink-600: #3a3d41;
-  --color-ink-400: #74787e;
+  /* Muted-on-light: passes 4.5:1 against bone-50/bone-100 (WCAG AA,
+     normal text). Use on light sections. */
+  --color-ink-500: #5c6066;
+  /* Muted-on-dark: passes 4.5:1 against ink-950/ink-900. Use on dark
+     (ink-950) sections — e.g. Breadcrumbs, Footer. Not for light
+     backgrounds; it falls under 4.5:1 there. */
+  --color-ink-400: #80858c;
   --color-ink-200: #c6c9ce;
 
   --color-bone-50: #fafaf7;
@@ -18,7 +24,26 @@
 
   --color-lime-400: #d6ff3f;
   --color-lime-500: #c2eb2b;
-  --color-lime-600: #a3c91f;
+  /* Darkened from the original #a3c91f: that was ~1.8:1 against
+     bone-50/100, far below WCAG AA's 4.5:1 for text. This is the only
+     lime shade used as text color on a light background. */
+  --color-lime-600: #4d6b0a;
+
+  /* Admin dashboard semantic surface tokens — swapped by the `.dark`
+     class on <html> (see AdminLayout.astro), independent of the public
+     site's fixed ink/bone/lime palette above. */
+  --color-surface: #ffffff;
+  --color-surface-muted: #f6f6f4;
+  --color-surface-hover: #eeede7;
+  --color-border: rgb(18 19 20 / 0.1);
+  --color-text: #121314;
+  --color-text-muted: #5b5e63;
+  --color-danger: #c6373a;
+  --color-danger-muted: #fbe9e9;
+  --color-success: #1f8f54;
+  --color-success-muted: #e8f6ee;
+  --color-warning: #b6811c;
+  --color-warning-muted: #fbf0dd;
 
   --animate-fade-up: fade-up 0.6s ease-out both;
 
@@ -32,6 +57,18 @@
       transform: translateY(0);
     }
   }
+}
+
+:root.dark {
+  --color-surface: #16181a;
+  --color-surface-muted: #1c1e21;
+  --color-surface-hover: #24262a;
+  --color-border: rgb(255 255 255 / 0.1);
+  --color-text: #f3f2ec;
+  --color-text-muted: #9a9ea3;
+  --color-danger-muted: rgb(198 55 58 / 0.16);
+  --color-success-muted: rgb(31 143 84 / 0.16);
+  --color-warning-muted: rgb(182 129 28 / 0.18);
 }
 
 @layer base {

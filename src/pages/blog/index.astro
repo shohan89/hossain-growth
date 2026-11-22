@@ -3,19 +3,31 @@ import { env } from 'cloudflare:workers';
 import SiteLayout from '../../layouts/SiteLayout.astro';
 import Container from '../../components/ui/Container.astro';
 import Breadcrumbs from '../../components/ui/Breadcrumbs.astro';
+import MediaImage from '../../components/ui/MediaImage.astro';
 import { getDb } from '../../lib/db/client';
-import { getPublishedBlogPosts } from '../../lib/content/public';
+import { getPublishedBlogPosts, getMediaAssetsMap } from '../../lib/content/public';
 
 export const prerender = false;
 
 const categorySlug = Astro.url.searchParams.get('category') ?? undefined;
 const db = getDb(env.DB);
 const posts = await getPublishedBlogPosts(db, { categorySlug });
+const mediaMap = await getMediaAssetsMap(
+  db,
+  posts.map((p) => p.featuredImageId),
+);
+
+// A category filter is the same template with a narrower result set, not
+// distinct content — canonicalize every variant back to the base listing
+// so search engines don't index a page per category as duplicate/thin
+// content.
+const canonicalUrl = new URL('/blog', Astro.url.origin).toString();
 ---
 
 <SiteLayout
   title="Blog"
   description="Insights on digital marketing, SEO, paid media, and growth strategy from the Hossain Growth team."
+  canonicalUrl={canonicalUrl}
 >
   <section class="bg-ink-950 py-20 text-bone-50 lg:py-28">
     <Container class="flex flex-col gap-6">
@@ -39,6 +51,14 @@ const posts = await getPublishedBlogPosts(db, { categorySlug });
               href={`/blog/${post.slug}`}
               class="flex flex-col gap-3 rounded-3xl border border-ink-900/8 bg-bone-100 p-8 transition-colors hover:border-lime-500/60"
             >
+              {post.featuredImageId && (
+                <MediaImage
+                  asset={mediaMap.get(post.featuredImageId)}
+                  alt={post.title}
+                  class="h-40 w-full rounded-2xl"
+                  fallbackClass="hidden"
+                />
+              )}
               {post.categoryName && (
                 <span class="text-xs font-semibold uppercase tracking-wide text-lime-600">
                   {post.categoryName}

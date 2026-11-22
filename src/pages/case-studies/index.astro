@@ -4,11 +4,16 @@ import SiteLayout from '../../layouts/SiteLayout.astro';
 import Container from '../../components/ui/Container.astro';
 import Breadcrumbs from '../../components/ui/Breadcrumbs.astro';
 import FinalCta from '../../components/home/FinalCta.astro';
+import MediaImage from '../../components/ui/MediaImage.astro';
 import { getDb } from '../../lib/db/client';
-import { getPublishedCaseStudies } from '../../lib/content/public';
+import { getPublishedCaseStudies, getMediaAssetsMap } from '../../lib/content/public';
 
 const db = getDb(env.DB);
 const caseStudies = await getPublishedCaseStudies(db);
+const mediaMap = await getMediaAssetsMap(
+  db,
+  caseStudies.map((c) => c.featuredImageId),
+);
 ---
 
 <SiteLayout
@@ -42,7 +47,15 @@ const caseStudies = await getPublishedCaseStudies(db);
               href={`/case-studies/${study.slug}`}
               class="flex flex-col gap-4 rounded-3xl border border-ink-900/8 bg-bone-100 p-8 hover:border-lime-500/60"
             >
-              <div class="flex items-center gap-3 text-xs font-semibold uppercase tracking-wide text-ink-400">
+              {study.featuredImageId && (
+                <MediaImage
+                  asset={mediaMap.get(study.featuredImageId)}
+                  alt={study.title}
+                  class="h-40 w-full rounded-2xl"
+                  fallbackClass="hidden"
+                />
+              )}
+              <div class="flex items-center gap-3 text-xs font-semibold uppercase tracking-wide text-ink-500">
                 {study.industry && <span>{study.industry}</span>}
                 {study.client && <span>&middot; {study.client}</span>}
               </div>

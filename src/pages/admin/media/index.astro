@@ -1,0 +1,15 @@
+---
+import AdminLayout from '../../../layouts/AdminLayout.astro';
+import MediaLibraryManager from '../../../components/admin/modules/MediaLibraryManager.tsx';
+import { PERMISSIONS } from '../../../lib/auth/permissions';
+import { hasPermission } from '../../../lib/auth/rbac';
+
+const session = Astro.locals.session!;
+if (!hasPermission(session, PERMISSIONS.MEDIA_READ)) return Astro.redirect('/admin');
+const canWrite = hasPermission(session, PERMISSIONS.MEDIA_WRITE);
+const canDelete = hasPermission(session, PERMISSIONS.MEDIA_DELETE);
+---
+
+<AdminLayout title="Media Library">
+  <MediaLibraryManager client:load canWrite={canWrite} canDelete={canDelete} />
+</AdminLayout>

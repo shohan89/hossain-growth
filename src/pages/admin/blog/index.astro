@@ -1,0 +1,16 @@
+---
+import AdminLayout from '../../../layouts/AdminLayout.astro';
+import BlogPostsManager from '../../../components/admin/modules/BlogPostsManager.tsx';
+import { PERMISSIONS } from '../../../lib/auth/permissions';
+import { hasPermission } from '../../../lib/auth/rbac';
+
+const session = Astro.locals.session!;
+if (!hasPermission(session, PERMISSIONS.BLOG_READ)) return Astro.redirect('/admin');
+const canWrite = hasPermission(session, PERMISSIONS.BLOG_WRITE);
+const canDelete = hasPermission(session, PERMISSIONS.BLOG_DELETE);
+const canPublish = hasPermission(session, PERMISSIONS.BLOG_PUBLISH);
+---
+
+<AdminLayout title="Blog Posts">
+  <BlogPostsManager client:load canWrite={canWrite} canDelete={canDelete} canPublish={canPublish} />
+</AdminLayout>

@@ -11,12 +11,13 @@ import { parseListQuery, offsetFor } from '../../../lib/http/pagination';
 import { ApiError } from '../../../lib/http/errors';
 import { logActivity } from '../../../lib/audit';
 import { getClientIp } from '../../../lib/rate-limit';
+import { readImageDimensions } from '../../../lib/image-dimensions';
 
 export const prerender = false;
 
 const SORTABLE = ['fileName', 'createdAt', 'sizeBytes'] as const;
-const MAX_UPLOAD_BYTES = 10 * 1024 * 1024; // 10 MB
-const ALLOWED_MIME_TYPES = new Set([
+export const MAX_UPLOAD_BYTES = 10 * 1024 * 1024; // 10 MB
+export const ALLOWED_MIME_TYPES = new Set([
   'image/jpeg',
   'image/png',
   'image/webp',
@@ -78,8 +79,10 @@ export const POST: APIRoute = withErrorHandling(async (ctx) => {
   const id = crypto.randomUUID();
   const extension = file.name.includes('.') ? file.name.split('.').pop() : undefined;
   const r2Key = `media/${id}${extension ? `.${extension}` : ''}`;
+  const bytes = await file.arrayBuffer();
+  const dimensions = readImageDimensions(bytes, file.type);
 
-  await env.MEDIA.put(r2Key, await file.arrayBuffer(), {
+  await env.MEDIA.put(r2Key, bytes, {
     httpMetadata: { contentType: file.type },
   });
 
@@ -89,6 +92,8 @@ export const POST: APIRoute = withErrorHandling(async (ctx) => {
     fileName: file.name,
     mimeType: file.type,
     sizeBytes: file.size,
+    width: dimensions?.width ?? null,
+    height: dimensions?.height ?? null,
     altText: typeof altText === 'string' ? altText : null,
     uploadedBy: session.sub,
   });

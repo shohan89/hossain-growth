@@ -1,11 +1,11 @@
 import type { APIRoute } from 'astro';
-import { and, asc, desc, eq, like, or, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, gt, like, or, sql } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/d1';
 import { env } from 'cloudflare:workers';
 import * as schema from '../../../lib/db/schema';
-import { leads, LEAD_STATUSES } from '../../../lib/db/schema';
-import { createLeadSchema } from '../../../lib/validation/leads';
-import { requirePermission } from '../../../lib/auth/rbac';
+import { leadNotes, leads, LEAD_STATUSES } from '../../../lib/db/schema';
+import { adminCreateLeadSchema, createLeadSchema } from '../../../lib/validation/leads';
+import { hasPermission, requirePermission } from '../../../lib/auth/rbac';
 import { PERMISSIONS } from '../../../lib/auth/permissions';
 import { jsonList, jsonOk, withErrorHandling } from '../../../lib/http/response';
 import { parseListQuery, offsetFor } from '../../../lib/http/pagination';
@@ -13,6 +13,14 @@ import { ApiError } from '../../../lib/http/errors';
 import { enforceRateLimit, getClientIp } from '../../../lib/rate-limit';
 import { verifyTurnstileToken } from '../../../lib/turnstile';
 import { logActivity } from '../../../lib/audit';
+import { notifyNewLead } from '../../../lib/lead-notifications';
+
+/** A visually hidden form field real visitors never fill in; bots that
+ * auto-fill every input reveal themselves by putting something here. */
+const HONEYPOT_FIELD = 'website_url';
+/** A second submission from the same email within this window is treated
+ * as a resubmission of the same inquiry rather than a brand-new lead. */
+const DUPLICATE_WINDOW_MS = 15 * 60 * 1000;
 
 export const prerender = false;
 
@@ -28,6 +36,8 @@ export const GET: APIRoute = withErrorHandling(async (ctx) => {
   if (status) clauses.push(eq(leads.status, status as (typeof LEAD_STATUSES)[number]));
   const country = ctx.url.searchParams.get('country');
   if (country) clauses.push(eq(leads.country, country));
+  const budget = ctx.url.searchParams.get('budget');
+  if (budget) clauses.push(eq(leads.budget, budget));
   const source = ctx.url.searchParams.get('source');
   if (source) clauses.push(eq(leads.source, source));
   const assignedTo = ctx.url.searchParams.get('assignedTo');
@@ -77,16 +87,50 @@ export const GET: APIRoute = withErrorHandling(async (ctx) => {
   });
 });
 
-/** Public endpoint — no session required, but rate-limited and Turnstile-verified. */
+/**
+ * Public endpoint — no session required for anonymous visitors (rate
+ * limited + Turnstile-verified). An authenticated admin with
+ * `leads.write` can instead log a lead manually (phone call, in person,
+ * etc.) without Turnstile — that request already came from a verified
+ * session, not an anonymous form.
+ */
 export const POST: APIRoute = withErrorHandling(async (ctx) => {
+  const db = drizzle(env.DB, { schema });
   const ip = getClientIp(ctx.request);
+
+  if (ctx.locals.session && hasPermission(ctx.locals.session, PERMISSIONS.LEADS_WRITE)) {
+    const body = adminCreateLeadSchema.parse(await ctx.request.json());
+    const id = crypto.randomUUID();
+
+    await db.insert(leads).values({
+      id,
+      ...body,
+      email: body.email.toLowerCase(),
+      source: body.source ?? 'manual',
+      turnstileVerified: false,
+    });
+
+    await logActivity(db, {
+      userId: ctx.locals.session.sub,
+      action: 'lead.created',
+      entityType: 'lead',
+      entityId: id,
+      metadata: { source: body.source ?? 'manual' },
+      ipAddress: ip,
+    });
+
+    const [row] = await db.select().from(leads).where(eq(leads.id, id));
+    return jsonOk(row, 201);
+  }
+
   await enforceRateLimit(env.SESSIONS, ip, {
     action: 'lead-create',
     limit: 5,
     windowSeconds: 60,
   });
 
-  const body = createLeadSchema.parse(await ctx.request.json());
+  const rawBody = (await ctx.request.json()) as Record<string, unknown>;
+  const body = createLeadSchema.parse(rawBody);
   const { turnstileToken, ...fields } = body;
 
   const verified = await verifyTurnstileToken(turnstileToken, env.TURNSTILE_SECRET_KEY, ip);
@@ -94,13 +138,65 @@ export const POST: APIRoute = withErrorHandling(async (ctx) => {
     throw new ApiError(400, 'TURNSTILE_FAILED', 'Bot verification failed. Please try again.');
   }
 
-  const db = drizzle(env.DB, { schema });
+  // Honeypot: a filled-in decoy field means a bot auto-filled every input
+  // on the form. Respond exactly like a real success so the bot has no
+  // signal it was caught, but never write the submission to the leads
+  // table.
+  const honeypotValue = rawBody[HONEYPOT_FIELD];
+  if (typeof honeypotValue === 'string' && honeypotValue.trim().length > 0) {
+    await logActivity(db, {
+      userId: null,
+      action: 'lead.spam_rejected',
+      entityType: 'lead',
+      metadata: { reason: 'honeypot', email: fields.email },
+      ipAddress: ip,
+    });
+    return jsonOk({ id: crypto.randomUUID(), ...fields }, 201);
+  }
+
+  const normalizedEmail = fields.email.toLowerCase();
+
+  // Duplicate handling: a resubmission from the same email within the
+  // window (double-click, retry after a flaky connection, "actually, one
+  // more thing") is folded into the existing lead as a note instead of
+  // creating a second row for the same inquiry.
+  const [recentDuplicate] = await db
+    .select()
+    .from(leads)
+    .where(
+      and(
+        eq(leads.email, normalizedEmail),
+        gt(leads.createdAt, new Date(Date.now() - DUPLICATE_WINDOW_MS)),
+      ),
+    )
+    .orderBy(desc(leads.createdAt))
+    .limit(1);
+
+  if (recentDuplicate) {
+    if (fields.message) {
+      await db.insert(leadNotes).values({
+        id: crypto.randomUUID(),
+        leadId: recentDuplicate.id,
+        authorId: null,
+        note: `Submitted the form again within ${DUPLICATE_WINDOW_MS / 60_000} minutes: ${fields.message}`,
+      });
+    }
+    await logActivity(db, {
+      userId: null,
+      action: 'lead.duplicate_merged',
+      entityType: 'lead',
+      entityId: recentDuplicate.id,
+      ipAddress: ip,
+    });
+    return jsonOk(recentDuplicate, 200);
+  }
+
   const id = crypto.randomUUID();
 
   await db.insert(leads).values({
     id,
     ...fields,
-    email: fields.email.toLowerCase(),
+    email: normalizedEmail,
     turnstileVerified: true,
   });
 
@@ -114,5 +210,19 @@ export const POST: APIRoute = withErrorHandling(async (ctx) => {
   });
 
   const [row] = await db.select().from(leads).where(eq(leads.id, id));
+
+  await notifyNewLead(db, env, {
+    id: row.id,
+    name: row.name,
+    email: row.email,
+    phone: row.phone,
+    company: row.company,
+    country: row.country,
+    budget: row.budget,
+    message: row.message,
+    source: row.source,
+    serviceInterest: row.serviceInterest,
+  });
+
   return jsonOk(row, 201);
 });

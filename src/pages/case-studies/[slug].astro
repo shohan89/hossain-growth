@@ -4,9 +4,10 @@ import SiteLayout from '../../layouts/SiteLayout.astro';
 import Container from '../../components/ui/Container.astro';
 import Breadcrumbs from '../../components/ui/Breadcrumbs.astro';
 import FinalCta from '../../components/home/FinalCta.astro';
+import MediaImage from '../../components/ui/MediaImage.astro';
 import { getDb } from '../../lib/db/client';
-import { getCaseStudyBySlug } from '../../lib/content/public';
-import { articleSchema } from '../../lib/seo';
+import { getCaseStudyBySlug, getMediaAssetsMap, getSeoOverride } from '../../lib/content/public';
+import { articleSchema, resolveSeo } from '../../lib/seo';
 
 export const prerender = false;
 
@@ -18,17 +19,33 @@ if (!caseStudy) {
   return new Response('Case study not found', { status: 404 });
 }
 
-const canonicalUrl = new URL(`/case-studies/${caseStudy.slug}`, Astro.url.origin).toString();
+const [mediaMap, seoOverride] = await Promise.all([
+  getMediaAssetsMap(db, [caseStudy.featuredImageId]),
+  getSeoOverride(db, 'case_study', caseStudy.id),
+]);
+const featuredImage = caseStudy.featuredImageId ? mediaMap.get(caseStudy.featuredImageId) : null;
+
+const seo = resolveSeo({
+  origin: Astro.url.origin,
+  defaultTitle: caseStudy.title,
+  defaultDescription: caseStudy.results ?? undefined,
+  defaultPath: `/case-studies/${caseStudy.slug}`,
+  defaultImageId: caseStudy.featuredImageId,
+  override: seoOverride,
+});
 ---
 
 <SiteLayout
-  title={caseStudy.title}
-  description={caseStudy.results ?? undefined}
-  canonicalUrl={canonicalUrl}
+  title={seo.title}
+  description={seo.description}
+  canonicalUrl={seo.canonicalUrl}
+  ogImageUrl={seo.ogImageUrl}
+  noindex={seo.noindex}
   structuredData={articleSchema({
     headline: caseStudy.title,
     description: caseStudy.results ?? undefined,
-    url: canonicalUrl,
+    url: seo.canonicalUrl,
+    imageUrl: seo.ogImageUrl,
     datePublished: caseStudy.publishedAt?.toISOString(),
   })}
 >
@@ -51,6 +68,17 @@ const canonicalUrl = new URL(`/case-studies/${caseStudy.slug}`, Astro.url.origin
       </h1>
     </Container>
   </section>
+
+  {featuredImage && (
+    <Container class="-mt-10 pb-4">
+      <MediaImage
+        asset={featuredImage}
+        alt={caseStudy.title}
+        class="h-64 w-full rounded-3xl sm:h-96"
+        loading="eager"
+      />
+    </Container>
+  )}
 
   <section class="py-20 lg:py-28">
     <Container class="grid gap-10 lg:grid-cols-3">

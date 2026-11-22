@@ -1,0 +1,13 @@
+---
+import AdminLayout from '../../../layouts/AdminLayout.astro';
+import ActivityLogsManager from '../../../components/admin/modules/ActivityLogsManager.tsx';
+import { PERMISSIONS } from '../../../lib/auth/permissions';
+import { hasPermission } from '../../../lib/auth/rbac';
+
+const session = Astro.locals.session!;
+if (!hasPermission(session, PERMISSIONS.ACTIVITY_LOGS_READ)) return Astro.redirect('/admin');
+---
+
+<AdminLayout title="Activity Logs">
+  <ActivityLogsManager client:load />
+</AdminLayout>

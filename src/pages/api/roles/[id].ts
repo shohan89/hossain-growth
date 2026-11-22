@@ -8,7 +8,7 @@ import { updateRoleSchema } from '../../../lib/validation/auth';
 import { requirePermission } from '../../../lib/auth/rbac';
 import { PERMISSIONS } from '../../../lib/auth/permissions';
 import { jsonOk, withErrorHandling } from '../../../lib/http/response';
-import { NotFoundError } from '../../../lib/http/errors';
+import { ConflictError, NotFoundError } from '../../../lib/http/errors';
 import { loadRolePermissions } from '../../../lib/auth/load-role-permissions';
 import { logActivity } from '../../../lib/audit';
 import { getClientIp } from '../../../lib/rate-limit';
@@ -44,4 +44,31 @@ export const PATCH: APIRoute = withErrorHandling(async (ctx) => {
   });
 
   return jsonOk({ ...row, permissions: await loadRolePermissions(db, row.id) });
+});
+
+export const DELETE: APIRoute = withErrorHandling(async (ctx) => {
+  const session = requirePermission(ctx.locals.session, PERMISSIONS.ROLES_MANAGE);
+  const id = ctx.params.id as string;
+  const db = drizzle(env.DB, { schema });
+
+  try {
+    const [row] = await db.delete(roles).where(eq(roles.id, id)).returning();
+    if (!row) throw new NotFoundError('Role not found.');
+
+    await logActivity(db, {
+      userId: session.sub,
+      action: 'role.deleted',
+      entityType: 'role',
+      entityId: id,
+      ipAddress: getClientIp(ctx.request),
+    });
+
+    return new Response(null, { status: 204 });
+  } catch (error) {
+    if (error instanceof NotFoundError) throw error;
+    if (error instanceof Error && /FOREIGN KEY constraint failed/i.test(error.message)) {
+      throw new ConflictError('This role is still assigned to one or more admin users.');
+    }
+    throw error;
+  }
 });
